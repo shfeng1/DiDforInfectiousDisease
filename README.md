@@ -9,6 +9,6 @@ Folder “1b_Summarize” contains R scripts sumamrizing results from simulation
 
 Folders “2a_School_Masking” and “2b_Kansas_Masking” contain R scripts to reproduce reanalyses of the two published studies. For Kansas masking application, additional county level data was available from COVIDestim at https://covidestim.org.
 
-Folder “3_Temp” contains temporary data files generated from the simulation experiments.
+Folder “3_Temp” to store temporary data files generated from the simulation experiments.
 
-Folder “4_Output” stores all key output files.
+Folder “4_Output” to store all key output files generated from running the codes.
