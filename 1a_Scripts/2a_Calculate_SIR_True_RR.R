@@ -3,11 +3,12 @@ here::i_am("1a_Scripts/2a_Calculate_SIR_True_RR.R")
 source("./global_options.R")
 source("./1a_Scripts/0_SIR.R")
 
-sim.param <- expand.grid(trans_prob.base2=1.15/inf_mean, trans_prob.ratio=c(1, 1.1),
+# sim.param <- expand.grid(trans_prob.base2=1.15/inf_mean, trans_prob.ratio=c(1, 1.1),
+sim.param <- expand.grid(trans_prob.base2=1/inf_mean, trans_prob.ratio=c(1, 1.1),
                          eff.multi1=c(0.8, 0.9, 0.95, 1, 1.05, 1.1, 1.2)) %>% 
   mutate(trans_prob.base1=trans_prob.base2*trans_prob.ratio)
 
-nsim <- 1000
+nsim <- 500
 sim.out <- data.frame()
 for (j in 1:nrow(sim.param)) {
   print(j)
@@ -22,6 +23,6 @@ for (j in 1:nrow(sim.param)) {
     }
   sim.out <- rbind(sim.out, out)
 }
-saveRDS(sim.out, "./4_Output/SIR_RR.rds")
-# saveRDS(rbind(sim.out, readRDS("./4_Output/SIR_RR.rds")), "./4_Output/SIR_RR.rds")
+# saveRDS(sim.out, "./4_Output/SIR_RR.rds")
+saveRDS(rbind(sim.out, readRDS("./4_Output/SIR_RR.rds")), "./4_Output/SIR_RR.rds")
 

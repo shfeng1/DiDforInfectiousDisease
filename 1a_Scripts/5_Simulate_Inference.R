@@ -4,14 +4,15 @@ source("./global_options.R")
 source("./1a_Scripts/0_SIR.R")
 
 N <- 50; N1 <- 5
-sim.param <- expand.grid(trans_prob.base2=1.15/inf_mean, trans_prob.ratio=1.1, eff.multi=c(0.9, 0.95, 1, 1.05, 1.1)) %>%
+sim.param <- expand.grid(trans_prob.base2=1.15/inf_mean, trans_prob.ratio=1.1,
+                         eff.multi=c(0.9, 0.95, 1, 1.05, 1.1)) %>%
   mutate(trans_prob.base1=trans_prob.base2*trans_prob.ratio)
 
-nsim <- 5000
+nsim <- 1000
 sim.out <- data.frame()
 for (j in 1:nrow(sim.param)) {
   print(j)
-  set.seed(j, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
+  set.seed(2000+j, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
   out <- foreach(s = 1:nsim,
                  .combine = "rbind",
                  .errorhandling = "remove") %dopar%
@@ -25,4 +26,5 @@ for (j in 1:nrow(sim.param)) {
   sim.out <- rbind(sim.out, out)
 }
 
-saveRDS(sim.out, "./4_Output/SIR_N1=5.rds")
+saveRDS(rbind(readRDS("./4_Output/SIR_N1=5.rds"), sim.out), "./4_Output/SIR_N1=5.rds")
+# saveRDS(sim.out, "./4_Output/SIR_N1=5.rds")

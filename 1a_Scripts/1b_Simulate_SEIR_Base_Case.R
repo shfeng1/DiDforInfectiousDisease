@@ -4,13 +4,14 @@ source("./global_options.R")
 source("./1a_Scripts/0_SEIR.R")
 
 sim.param <- expand.grid(trans_prob.base2=1.15/inf_mean, trans_prob.ratio=1.1,
-                         eff.multi=c(0.8, 0.9, 1, 1.1, 1.2)) %>%
+                         eff.multi=c(0.8, 1, 1.1, 1.2)) %>% # only need to simulate for the extreme ends
   mutate(trans_prob.base1=trans_prob.base2*trans_prob.ratio)
 
-nsim <- 5000
+nsim <- 1000
 sim.out <- data.frame()
 for (j in 1:nrow(sim.param)) {
   print(j)
+  # seeds were set as (j, 1000+j, 2000+j, 3000+j, 4000+j)
   set.seed(j, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
   out <- foreach(s = 1:nsim,
                  .combine = "rbind",
@@ -25,4 +26,5 @@ for (j in 1:nrow(sim.param)) {
   sim.out <- rbind(sim.out, out)
 }
 
-saveRDS(sim.out, "./4_Output/SEIR_base_case.rds")
+# saveRDS(sim.out, "./4_Output/SEIR_base_case.rds")
+saveRDS(rbind(sim.out, readRDS("./4_Output/SEIR_base_case.rds")), "./4_Output/SEIR_base_case.rds")

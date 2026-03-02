@@ -11,13 +11,15 @@ var_true <- std_true^2
 trans_prob.base2 <- 0.115; trans_prob.base1 <- trans_prob.base2*1.1
 
 nsim <- 1000
-sim.param <- rbind(expand.grid(mean_spe=c(0.8, 1, 1.2), var_spe=1, eff.multi=c(0.8, 1, 1.2)),
-                   expand.grid(mean_spe=1, var_spe=c(0.8, 1.2), eff.multi=c(0.8, 1, 1.2)))
+# sim.param <- rbind(expand.grid(mean_spe=c(0.8, 1, 1.2), var_spe=1, eff.multi=c(0.8, 1, 1.2)),
+#                    expand.grid(mean_spe=1, var_spe=c(0.8, 1.2), eff.multi=c(0.8, 1, 1.2)))
+sim.param <- rbind(expand.grid(mean_spe=c(0.8, 1, 1.2), var_spe=1, eff.multi=c(1.1)),
+                   expand.grid(mean_spe=1, var_spe=c(0.8, 1.2), eff.multi=c(1.1)))
 
 sim.out <- data.frame()
 for (j in 1:nrow(sim.param)) {
   print(j)
-  set.seed(j, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
+  set.seed(1000+j, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
   out <- foreach(s = 1:nsim,
                  .combine = "rbind",
                  .errorhandling = "remove") %dopar%
@@ -30,4 +32,5 @@ for (j in 1:nrow(sim.param)) {
     }
   sim.out <- rbind(sim.out, out)
 }
-saveRDS(sim.out, "./4_Output/misspecify_GI.rds")
+saveRDS(rbind(readRDS("./4_Output/misspecify_GI.rds"), sim.out), "./4_Output/misspecify_GI.rds")
+# saveRDS(sim.out, "./4_Output/misspecify_GI.rds")

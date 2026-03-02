@@ -9,11 +9,11 @@ sim.param <- expand.grid(trans_prob.base2=1.15/inf_days, trans_prob.ratio=1.1,
                          eff.multi=c(0.9, 0.95, 1)) %>%
   mutate(trans_prob.base1=trans_prob.base2*trans_prob.ratio)
 
-nsim <- 100 # Note: this simulation takes a long time run because of the long T1, so I split it up to run 100 simulations at a time.
+nsim <- 50
 sim.out <- data.frame()
 for (j in 1:nrow(sim.param)) {
   print(j)
-  set.seed(j, kind = "L'Ecuyer-CMRG") # seeds were set accordingly as j, 100+j, 200+j, etc.
+  set.seed(800+j, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
   out <- foreach(s = 1:nsim,
                  .combine = "rbind",
                  .errorhandling = "remove") %dopar%
@@ -28,9 +28,5 @@ for (j in 1:nrow(sim.param)) {
 }
 sim.out$inf_days <- inf_days; sim.out$delta <- delta
 
-filename <- "./4_Output/SEIR_long_time.rds"
-if (file.exists(filename)) {
-  saveRDS(rbind(readRDS(filename), sim.out), filename)
-} else {
-  saveRDS(sim.out, filename)
-}
+saveRDS(rbind(readRDS("./4_Output/SEIR_long_time.rds"), sim.out), "./4_Output/SEIR_long_time.rds")
+# saveRDS(sim.out, "./4_Output/SEIR_long_time.rds")

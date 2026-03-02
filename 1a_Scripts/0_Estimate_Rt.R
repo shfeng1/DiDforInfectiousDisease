@@ -33,7 +33,7 @@ compute_Rt_wt <- function(inf_mean, ID, inc, agg=7) {
   keep_wt <- list()
   for(i in unique(ID)){
     vec <- inc[ID==i]
-    temp_wt <- wallinga_teunis(vec, method="parametric_si",
+    temp_wt <- EpiEstim::wallinga_teunis(vec, method="parametric_si",
                                config=list(
                                  t_start=2:((T0+T1+burnin*3)/agg-1),
                                  t_end=3:((T0+T1+burnin*3)/agg),
@@ -106,7 +106,7 @@ gen_SEIR <- function(trans_prob.base1, trans_prob.base2, eff.multi1, inf_mean) {
 }
 
 # dgp is either "SIR" or "SEIR"
-process_data <- function(out.df, inf_mean, agg=7, dgp="SIR") {
+process_data <- function(out.df, inf_mean, agg=7, dgp="SIR", discard_start=burnin, discard_end=burnin*2) {
   df.agg <- out.df %>% 
     group_by(unit) %>%
     arrange(t) %>%
@@ -139,9 +139,9 @@ process_data <- function(out.df, inf_mean, agg=7, dgp="SIR") {
   # chop off burnin in the beginning and 2*burnin periods in the end
   df <- data.clean %>% data.frame() %>%
     mutate(unit = relevel(factor(unit), ref = max(data.clean$unit)),
-           week = week - burnin/agg) %>%
+           week = week - discard_start/agg) %>%
     filter(week > 0, 
-           week <= max(week) - burnin*2/agg)
+           week <= max(week) - discard_end/agg)
   
   return(df)
 }

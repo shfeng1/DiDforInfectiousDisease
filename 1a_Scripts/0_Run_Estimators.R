@@ -11,7 +11,8 @@ source("./1a_Scripts/0_Bias_Correction.R")
 run_inc <- function(data.in, parallel.id) {
   inc.fit <- lm(inc ~ -1 + factor(week) + factor(unit) + factor(trt_post), data = data.in)
   
-  command <- "glm inc i.unit i.week i.trt_post, family(gaussian) link(identity)
+  command <- "set matsize 1000
+    glm inc i.unit i.week i.trt_post, family(gaussian) link(identity)
     boottest 1.trt_post, cluster(unit) reps(10000) quietly
     gen p = r(p) in 1
     keep p
@@ -28,7 +29,8 @@ run_inc <- function(data.in, parallel.id) {
 run_loginc <- function(data.in, parallel.id) {
   loginc.fit <- glm(inc ~ -1 + factor(week) + factor(unit) + factor(trt_post), family = poisson, data = data.in)
   
-  command <- "glm inc i.unit i.week 1.trt_post, family(poisson) link(log)
+  command <- "set matsize 1000
+    glm inc i.unit i.week 1.trt_post, family(poisson) link(log)
     boottest 1.trt_post, cluster(unit) reps(10000) quietly
     gen p = r(p) in 1
     keep p
@@ -48,7 +50,8 @@ run_loginc <- function(data.in, parallel.id) {
 
 run_growth <- function(data.in, parallel.id=0, trt.IDs=1:N1, coef=NULL) {
   growth.fit <- glm(growth ~ -1 + factor(week) + factor(unit) + factor(trt_post), family = poisson, data = data.in)
-  command <- "glm growth i.unit i.week 1.trt_post, family(poisson) link(log)
+  command <- "set matsize 1000
+    glm growth i.unit i.week 1.trt_post, family(poisson) link(log)
     boottest 1.trt_post, cluster(unit) reps(10000) quietly
     gen p = r(p) in 1
     keep p
@@ -111,7 +114,8 @@ run_Rt <- function(data.in, out.df, type, dgp, inf_mean, delta=NULL, inf_var=NUL
   
   Rt.fit <- glm(Rt ~ -1 + factor(week) + factor(unit) + factor(trt_post), family = poisson, data = data.in)
   data.untrt <- data.in %>% filter(trt.unit) %>% mutate(trt_post = FALSE)
-  command <- "glm Rt i.unit i.week 1.trt_post, family(poisson) link(log)
+  command <- "set matsize 1000
+    glm Rt i.unit i.week 1.trt_post, family(poisson) link(log)
     boottest 1.trt_post, cluster(unit) reps(10000) quietly
     gen p = r(p) in 1
     keep p
@@ -175,7 +179,8 @@ run_Rt <- function(data.in, out.df, type, dgp, inf_mean, delta=NULL, inf_var=NUL
 run_beta <- function(data.in, out.df, dgp, inf_mean, delta=NULL, inf_var=NULL, trt.IDs=1:N1, coef=NULL, parallel.id=0) {
   beta.fit <- glm(beta_est ~ -1 + factor(week) + factor(unit) + factor(trt_post), family = poisson, data = data.in)
   data.untrt <- data.in %>% filter(trt.unit) %>% mutate(trt_post = FALSE)
-  command <- "glm beta_est i.unit i.week 1.trt_post, family(poisson) link(log)
+  command <- "set matsize 600
+    glm beta_est i.unit i.week 1.trt_post, family(poisson) link(log)
     boottest 1.trt_post, cluster(unit) reps(10000) quietly
     gen p = r(p) in 1
     keep p

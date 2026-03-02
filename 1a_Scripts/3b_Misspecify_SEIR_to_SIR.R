@@ -21,4 +21,5 @@ for (j in 1:nrow(sim.param)) {
     }
   sim.out <- rbind(sim.out, out)
 }
-saveRDS(sim.out, "./4_Output/misspecify_SEIR_to_SIR_inf_days.rds")
+# saveRDS(sim.out, "./4_Output/misspecify_SEIR_to_SIR_inf_days.rds")
+saveRDS(rbind(sim.out, readRDS("./4_Output/misspecify_SEIR_to_SIR_inf_days.rds")), "./4_Output/misspecify_SEIR_to_SIR_inf_days.rds")
