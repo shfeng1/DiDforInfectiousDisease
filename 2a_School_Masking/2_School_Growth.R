@@ -1,4 +1,4 @@
-rm(list=ls())
+# rm(list=ls())
 here::i_am("2a_School_Masking/2_School_Growth.R")
 source("./global_options.R")
 source("./1a_Scripts/0_boottest.glm.R")
@@ -33,23 +33,33 @@ ATT_gt <- boottest.glm(fit, M=1000, gweight=gweight, model="growth")
 
 rownames(ATT_gt) <- time_to_trt
 ATT <- colMeans(ATT_gt[rownames(ATT_gt) >= 0,])
+
+print("------------------ LOG GROWTH MODEL ------------------")
+print(paste0("15-week treatment effect: ", round(exp(mean(ATT)), 2), " with CI: (",  
+             round(exp(quantile(ATT, 0.025)), 2), ", ", round(exp(quantile(ATT, 0.975)), 2), ")"))
 mean(ATT) # -0.1135901
 exp(mean(ATT)) # RR 0.8926238
 quantile(ATT, c(0.025, 0.975)) # CI (-0.3506821, 0.1270042)
 exp(quantile(ATT, c(0.025, 0.975))) # RR (0.7042076, 1.1354218)
 2*pnorm(abs(mean(ATT)/sd(ATT)), lower.tail=FALSE) # 0.3553724
 
-growth_AME(coef=rowMeans(ATT_gt)) # -317.9912
 AMEs <- apply(ATT_gt, 2, function(coef) growth_AME(coef) )
-quantile(AMEs, c(0.025, 0.975)) # (-6844.8307, 93.3456)
+print(paste0("15-week AME: ", round(growth_AME(coef=rowMeans(ATT_gt)), 1), " with CI: (",  
+             round(quantile(AMEs, 0.025), 1), ", ", round(quantile(AMEs, 0.975), 1), ")"))
+# AME = -317.9912; CI (-6844.8307, 93.3456)
 ##################################################   KEEP 5 WEEKS POST INTERVENTION
-ATT <- colMeans(ATT_gt[rownames(ATT_gt) %in% (0:4),]) # -0.03513041 (-0.2552712, 0.1953011), RR 0.9654795 (0.7747064, 1.2156770)
+ATT <- colMeans(ATT_gt[rownames(ATT_gt) %in% (0:4),])
+
+print(paste0("5-week treatment effect: ", round(exp(mean(ATT)), 2), " with CI: (",  
+             round(exp(quantile(ATT, 0.025)), 2), ", ", round(exp(quantile(ATT, 0.975)), 2), ")"))
 mean(ATT) # -0.03064354
 exp(mean(ATT)) # RR 0.9698212
 quantile(ATT, c(0.025, 0.975)) # CI (-0.2492987, 0.1919316)
 exp(quantile(ATT, c(0.025, 0.975))) # RR (0.7793471, 1.2115876)
 2*pnorm(abs(mean(ATT)/sd(ATT)), lower.tail=FALSE) # 0.7893808
 
-growth_AME(coef=rowMeans(ATT_gt), subset=c(0:4)) # -7.032802
 AMEs <- apply(ATT_gt, 2, function(coef) growth_AME(coef=coef, subset=c(0:4)) )
-quantile(AMEs, c(0.025, 0.975)) # CI (-47.376461, 9.134382)
+print(paste0("5-week AME: ", round(growth_AME(coef=rowMeans(ATT_gt), subset=c(0:4)) , 1), " with CI: (",  
+             round(quantile(AMEs, 0.025), 1), ", ", round(quantile(AMEs, 0.975), 1), ")"))
+quantile(AMEs, c(0.025, 0.975)) 
+# AME = -7.032802; CI (-47.376461, 9.134382)

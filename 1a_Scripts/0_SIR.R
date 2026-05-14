@@ -205,3 +205,80 @@ SIR_true_eff <- function(trans_prob.base1, trans_prob.base2, eff.multi1) {
                                  eff.multi1))
   out
 }
+
+#### FUNCTION #5 ####
+#### function set up a simple stochastic SIR model
+SIR_simple <- function(
+    time_steps, # number of total timesteps
+    pop.size, # population size
+    seeds, # number of initial infections
+    recovered, # number of recovered
+    trans_prob, # probability of transmission given contact: beta
+    inf_days, # average days of infectiousness*
+    T0, # time to intervention
+    trans_prob2 # trans_prob after intervention
+){
+  
+  beta = trans_prob  
+  
+  # track states
+  S = rep(0, time_steps)
+  I = rep(0, time_steps)
+  inc = rep(0, time_steps)
+  R = rep(0, time_steps)
+  C = rep(0, time_steps)
+  mean = rep(0, time_steps)
+  
+  # initial conditions
+  S[1] = pop.size - seeds - recovered
+  I[1] = seeds
+  R[1] = recovered
+  
+  for(i in 2:time_steps){
+    # change beta at the change time point
+    if(i == T0 + 1) beta = trans_prob2
+    
+    # set up random draw
+    mean[i] = beta*I[i-1]/pop.size*S[i-1]
+    trans_t = rpois(1, lambda = mean[i])
+    
+    # susceptible
+    S[i] = S[i-1] - trans_t
+    
+    # infectious
+    I[i] = (1-1/inf_days)*I[i-1] + trans_t
+    inc[i] = trans_t
+    C[i] = C[i-1] + trans_t
+    
+    # recovered
+    R[i] = R[i-1] + 1/inf_days*I[i-1]
+  }
+  
+  # return data table
+  d = data.table(pop.size, S, I, R, inc, C, mean) %>% mutate(t = row_number())
+  return(d)
+}
+
+sim_model_compare <- function(pop.size1, pop.size2, N = 2, N1 = 1, T.total, T1, seed1 = 50, seed2 = 50, R1 = 0, R2 = 0,
+                              burnin, trans_prob.base1, trans_prob.base2, inf_days, eff.multi1 = 1, eff.multi2 = 1) {
+  T0 <- T.total + burnin - T1
+  trt.IDs <- 1:N1
+  
+  out <- lapply(1:N, function(ind) { 
+    if (ind %in% trt.IDs) {
+      SIR_simple(pop.size=pop.size1, time_steps=(T.total+burnin), trans_prob=trans_prob.base1, trans_prob2 = trans_prob.base1*eff.multi1, 
+                 T0 = T0, inf_days = inf_days, seeds = seed1, recovered = R1)
+    } else {
+      SIR_simple(pop.size=pop.size2, time_steps=(T.total+burnin), trans_prob=trans_prob.base2, trans_prob2=trans_prob.base2*eff.multi2, 
+                 T0 = T0, inf_days = inf_days, seeds = seed2, recovered = R2)
+    }})
+  out.df <- rbindlist(out)
+  
+  df <- out.df %>% 
+    mutate(unit = rep(1:N, each=(T.total+burnin)),
+           trt.unit = unit %in% trt.IDs,
+           trt.time = t > T0,
+           trt_post = trt.unit & trt.time)
+  
+  return(df)
+}

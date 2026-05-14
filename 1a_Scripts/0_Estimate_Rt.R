@@ -72,18 +72,24 @@ compute_Rt_cohort <- function(incidence, ID, inf_mean, Ttot) {
 # 1. Simulate data according to SIR or SEIR
 # 2. Aggregate data to the desired level (default: weekly)
 # 3. Estimate R_t and beta_t
-gen_SIR <- function(trans_prob.base1, trans_prob.base2, eff.multi1, inf_mean) {
+gen_SIR <- function(trans_prob.base1, trans_prob.base2, eff.multi1, inf_mean, calculate_prevalence = T, equal_pop = T) {
+  if (equal_pop) {
+    pop.size1 <- pop.size2 <- pop.size
+  }
+  
   out.sim <- lapply(1:N, function(ind) { 
     if (ind %in% (1:N1)) { # generating treated units
-      run_SIR_varying(pop.size=pop.size, seeds=seed1, time_steps=(T0+T1+burnin*3), inf_mean=inf_mean,
+      run_SIR_varying(pop.size=pop.size1, seeds=seed1, time_steps=(T0+T1+burnin*3), inf_mean=inf_mean,
                       trans_prob = c(rep(trans_prob.base1, (T0+burnin)), rep(trans_prob.base1*eff.multi1, (T1+burnin*2))))
     } else { # generating comparison units
-      run_SIR_varying(pop.size=pop.size, seeds=seed2, time_steps=(T0+T1+burnin*3), inf_mean=inf_mean,
+      run_SIR_varying(pop.size=pop.size2, seeds=seed2, time_steps=(T0+T1+burnin*3), inf_mean=inf_mean,
                       trans_prob = c(rep(trans_prob.base2, (T0+burnin)), rep(trans_prob.base2, (T1+burnin*2))))
     }})
   out.df <- rbindlist(out.sim) %>% mutate(unit=rep(1:N, each=(T0+T1+burnin*3)))
-  out.df$prevalence <- compute_prevalence(inf_mean=inf_mean, ID=out.df$unit, inc=out.df$inc, time=out.df$t, Ttot=T0+T1+burnin)
-  out.df$R_cohort <- compute_Rt_cohort(out.df$inc, out.df$unit, inf_mean, (T0+T1+burnin*3))
+  if (calculate_prevalence) {
+    out.df$prevalence <- compute_prevalence(inf_mean=inf_mean, ID=out.df$unit, inc=out.df$inc, time=out.df$t, Ttot=T0+T1+burnin)
+    out.df$R_cohort <- compute_Rt_cohort(out.df$inc, out.df$unit, inf_mean, (T0+T1+burnin*3)) 
+  }
   
   return(out.df)
 }

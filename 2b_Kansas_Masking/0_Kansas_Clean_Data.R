@@ -4,8 +4,6 @@ here::i_am("2b_Kansas_Masking/0_Kansas_Clean_Data.R")
 source("./global_options.R")
 source("./1a_Scripts/0_Estimate_Rt.R")
 
-# "0_Data/covidestim-daily-fips.csv.xz" is a file with county-level daily estimates 
-# which can be publicly accessed from COVIDestim at https://covidestim.org
 covidestim <- vroom::vroom("./0_Data/covidestim-daily-fips.csv.xz") %>% 
   dplyr::select(fips, date, cases.fitted, infections, immune, deaths, cum.incidence, Rt)
 df <- haven::read_dta("./0_Data/mask_ordinances_JAMA_letter_v5.dta")
@@ -16,15 +14,18 @@ df.model <- df %>% filter(date >= "2020-03-13") %>% # to make sure the treatment
   merge(covidestim, by.x = c("ncofips", "date"), by.y = c("fips", "date"), all.x = T) %>%
   group_by(ncounty) %>% arrange(date) %>%
   mutate(time = 1:n(), growth = infections / lag(infections, 7),
+         E_lag = lag(infections, 1),
          sus_frac = (coestpop2019 - cum.incidence) / coestpop2019)
 ################################################################################################################################
 # Compute prevalence from the incidence time-series by convolving the residence times in both 
 # Exposed and Infectious compartments according to a Geometric distribution
-inf_days <- 5; delta <- 3
+inf_days <- 5; inf_days_std <- 2; delta <- 3 # Cori et al. instantaneous Rt --> we call it prevalence Rt
 df.model$prevalence <- compute_prevalence(inf_mean=inf_days, ID=df.model$ncounty, inc=df.model$infections, 
                                           time=df.model$time, Ttot=max(df.model$time))
 df.model$infected_est <- compute_infected(delta=delta, ID=df.model$ncounty, inc=df.model$infections, 
                                           time=df.model$time, Ttot=max(df.model$time)-1)
+df.model$I_est <- compute_prevalence(inf_mean=inf_days, ID=df.model$ncounty, inc=df.model$E_lag / delta, 
+                                     time=df.model$time, Ttot=max(df.model$time))
 saveRDS(df.model, "./0_Data/Kansas.rds")
 ################################################################################################################################
 df.first <- df.model %>% filter(dayssincefirstcase == 1)
@@ -39,15 +40,18 @@ df.clean <- df.model %>%
   summarise(start_date = min(date), dayssincefirstcase = min(dayssincefirstcase),
             sus_frac = mean(sus_frac), coestpop2019 = mean(coestpop2019),
             stnnewcases7davg = mean(stnnewcases7davg), growth = mean(growth),
-            Rt = mean(Rt), infections = mean(infections),
+            Rt = mean(Rt), infections = mean(infections), E_lag = mean(E_lag),
             infected_est = mean(infected_est, na.rm = T),
             prevalence_lag = mean(prevalence_lag, na.rm = T),
-            Rt_est = sum(infected_est) / sum(prevalence_lag)) %>%
+            Rt_est = sum(infected_est) / sum(prevalence_lag),
+            Rt_exposure = sum(infections) / sum(I_est)) %>%
   dplyr::select(ncounty, week, start_date, dayssincefirstcase, coestpop2019, sus_frac, stnnewcases7davg, 
-                infections, growth, infected_est, prevalence_lag, Rt, Rt_est) %>%
+                infections, growth, infected_est, prevalence_lag, E_lag, Rt, Rt_est, Rt_exposure) %>%
   ungroup() %>%
   mutate(Rt_est = ifelse(prevalence_lag==0, NA, Rt_est),
-         beta_est = Rt_est / sus_frac,
+         beta_exposure = Rt_exposure / sus_frac, # instantaneous Rt on the exposure
+         beta_est = Rt_est / sus_frac, # Rt prevalence-based
+         beta = Rt / sus_frac, # Rt cohort
          trt.time = (start_date >= "2020-07-24"),
          trt.unit = (ncounty %in% county.trt),
          trt_post = (trt.time & trt.unit),

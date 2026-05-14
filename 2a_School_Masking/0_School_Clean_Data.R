@@ -4,7 +4,7 @@ source("./global_options.R")
 source("./1a_Scripts/0_Estimate_Rt.R")
 
 # 72 Districts included in the study 
-# pulled from xxx pdf
+# pulled from Cowger, T.L., Murray, E.J., Clarke, J., Bassett, M.T., Ojikutu, B.O., Sánchez, S.M., Linos, N. and Hall, K.T., 2022. Lifting universal masking in schools—Covid-19 incidence among students and staff. New England Journal of Medicine, 387(21), pp.1935-1946.
 district.list <- c("Andover", "Belmont", "Boston", "Braintree", "Brookline", "Burlington", "Cambridge", "Canton", 
                    "Carlisle", "Chelsea", "Cohasset", "Concord", "Dedham", "Dover", "Everett", "Foxborough", "Franklin", 
                    "Hanover", "Hingham", "Holbrook", "Hull", "Lexington", "Lincoln", "Lynnfield", "Malden", "Mansfield", 
@@ -25,7 +25,7 @@ three_wk <- c("Brookline", "Cambridge", "Lincoln", "Medford", "Randolph", "Rever
 never <- c("Boston", "Chelsea")
 ###########################################################################################################################################
 # merge school registrar with reported case data
-df <- readRDS("./0_Data/School.rds") # source: xxx
+df <- readRDS("./0_Data/School.rds") # source: https://archives.lib.state.ma.us/entities/aggregation/ac73e1d7-47b1-4239-a327-2a526a2fc90a
 pop.student <- as.data.frame(read_excel("./0_Data/enrollmentbygrade.xlsx", skip=1, col_names=T)) %>%
   dplyr::select("District Code", "Total") %>% `colnames<-`(c("OrgCode", "students.total"))
 pop.staff <- as.data.frame(read_excel("./0_Data/teacherdata.xlsx", skip=1, col_names=T)) %>% 
@@ -102,76 +102,4 @@ df.clean <- df.clean %>%
          treat.time=ifelse(OrgName %in% one_wk, int.t+1,
                            ifelse(OrgName %in% two_wk, int.t+2,
                                   ifelse(OrgName %in% three_wk, int.t+3, 0))))
-saveRDS(df.clean, "./0_Data/School_Cleaned.rds")
-###########################################################################################################################################
-# Bi-weekly smoothing <-- only required for generating results in the Appendix Table xxx
-smooth.df <- df.clean %>%
-  # filter(week > 1) %>% # change the biweek structure
-  filter(week <= 40) %>% # most of school had 0 reporting in the last week
-  arrange(OrgName, OrgCode, end_date) %>%
-  group_by(OrgName) %>%
-  mutate(biweek = rep(1:20, each = 2)) %>%
-  group_by(OrgName, OrgCode, biweek) %>%
-  reframe(end_date = max(end_date),
-          StudentsPos = sum(StudentsPos),
-          StaffPos = sum(StaffPos),
-          RoutineTests = sum(RoutineTests),
-          RoutinePos = sum(RoutinePos),
-          students.total = mean(students.total),
-          staffs.total = mean(staffs.total),
-          wt.student = mean(wt.student),
-          wt.staff = mean(wt.staff),
-          wt.total = mean(wt.total)) %>%  
-  filter(biweek > 2, biweek < 20) %>% # most zeros took place in the very first or last week
-  group_by(OrgName, OrgCode) %>%
-  arrange(end_date) %>%
-  mutate(biweek = 1:n())
-
-smooth.df <- smooth.df %>%
-  group_by(OrgName, OrgCode, biweek, end_date) %>%
-  summarise(StudentsPos = sum(StudentsPos),
-            StaffPos = sum(StaffPos),
-            RoutineTests = sum(RoutineTests),
-            RoutinePos = sum(RoutinePos),
-            students.total = sum(students.total),
-            staffs.total = sum(staffs.total),
-            wt.student = sum(wt.student),
-            wt.staff = sum(wt.staff),
-            wt.total = sum(wt.total)) %>%
-  group_by(OrgName, OrgCode) %>%
-  mutate(OrgCode = as.numeric(OrgCode),
-         StudentsPosPer1K = StudentsPos/students.total*1000,
-         StaffPosPer1K = StaffPos/staffs.total*1000)
-###########################################################################################################################################
-# Group small schools
-# summary(smooth.df$students.total) # 1st Quartile at 2142 -- so group small schools with < 2000 students 
-# Min.  1st Qu.  Median   Mean   3rd Qu.    Max. 
-# 502    2142     3262    4103    4461     46001 
-
-df.smooth.gp <- smooth.df
-df.smooth.gp$OrgName[df.smooth.gp$students.total < 2000 & df.smooth.gp$OrgName %in% one_wk] <- "SmallSchools_1wk"
-df.smooth.gp$OrgCode[df.smooth.gp$OrgName == "SmallSchools_1wk"] <- 99999991
-df.smooth.gp$OrgName[df.smooth.gp$students.total < 2000 & df.smooth.gp$OrgName %in% c(two_wk, three_wk)] <- "SmallSchools_2or3wk"
-df.smooth.gp$OrgCode[df.smooth.gp$OrgName == "SmallSchools_2or3wk"] <- 99999992
-
-df.smooth.gp <- df.smooth.gp %>%
-  group_by(OrgName, OrgCode, biweek, end_date) %>%
-  summarise(StudentsPos = sum(StudentsPos),
-            StaffPos = sum(StaffPos),
-            RoutineTests = sum(RoutineTests),
-            RoutinePos = sum(RoutinePos),
-            students.total = sum(students.total),
-            staffs.total = sum(staffs.total),
-            wt.student = sum(wt.student),
-            wt.staff = sum(wt.staff),
-            wt.total = sum(wt.total)) %>%
-  group_by(OrgName, OrgCode) %>%
-  mutate(OrgCode = as.numeric(OrgCode),
-         StudentsPosPer1K = StudentsPos/students.total*1000,
-         StaffPosPer1K = StaffPos/staffs.total*1000,
-         PosPer1K = (StudentsPos + StaffPos) / ((students.total + staffs.total)/1000))
-
-unique(df.smooth.gp$OrgName[df.smooth.gp$StudentsPos==0]) # make sure there is now no school with 0 cases
-unique(df.smooth.gp$OrgName[df.smooth.gp$PosPer1K==0])
-
-saveRDS(df.smooth.gp, "School Data/df.smooth.gp.rds")
+# saveRDS(df.clean, "./0_Data/School_Cleaned.rds")
