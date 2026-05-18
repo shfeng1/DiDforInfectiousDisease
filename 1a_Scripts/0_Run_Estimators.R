@@ -191,10 +191,10 @@ run_beta <- function(data.in, out.df, dgp, inf_mean, delta=NULL, inf_var=NULL, t
     # For log beta models, first de-aggregate the weekly data to daily, assuming constant transmission rate across the weekly window
     data.untrt$beta_fit <- predict(beta.fit, newdata = data.untrt, type = "response")
   } else {
-    data.untrt$beta_fit <- beta.fit$fitted.values[df.in$trt.unit] / exp(coef)
+    data.untrt$beta_fit <- data.untrt$beta_est / exp(coef)
   }
   
-  data.untrt.deagg <- out.df %>% filter(unit %in% trt.IDs, t <= T0 + T1 + burnin) %>%
+  data.deagg <- out.df %>% filter(unit %in% trt.IDs, t <= T0 + T1 + burnin) %>%
     mutate(week = ceiling(t/agg), unit = factor(unit)) %>% # start with de-aggregated daily data
     merge(data.untrt %>% dplyr::select(unit, week, beta_est, beta_fit) %>% mutate(week = week + burnin/agg), 
           by = c("unit", "week"), all.x = T) %>%
@@ -205,14 +205,14 @@ run_beta <- function(data.in, out.df, dgp, inf_mean, delta=NULL, inf_var=NULL, t
   
   # Simulate case trajectories using untreated beta
   beta.untrt <- rbindlist(lapply(trt.IDs, function(ind) {
-    I0 <- data.untrt.deagg$I[data.untrt.deagg$unit==ind & data.untrt.deagg$t==burnin+1]
-    recovered <- data.untrt.deagg$R[data.untrt.deagg$unit==ind & data.untrt.deagg$t==burnin+1]
-    trans_prob <- data.untrt.deagg$beta_fit[data.untrt.deagg$unit==ind]
+    I0 <- data.deagg$I[data.deagg$unit==ind & data.deagg$t==burnin+1]
+    recovered <- data.deagg$R[data.deagg$unit==ind & data.deagg$t==burnin+1]
+    trans_prob <- data.deagg$beta_fit[data.deagg$unit==ind]
     if (dgp=="SIR") {
       run_SIR_varying(pop.size=pop.size, seeds=I0, recovered=recovered, trans_prob = trans_prob,
                       time_steps=(T0+T1), inf_mean=inf_mean, inf_var=inf_var)
     } else if (dgp=="SEIR") {
-      E0 <- data.untrt.deagg$E[data.untrt.deagg$unit==ind & data.untrt.deagg$t==burnin+1]
+      E0 <- data.deagg$E[data.deagg$unit==ind & data.deagg$t==burnin+1]
       run_SEIR_varying(pop.size=pop.size, I0=I0, E0=E0, recovered=recovered, trans_prob = trans_prob,
                        time_steps=(T0+T1), inf_mean=inf_mean, delta=delta)
     }
@@ -221,6 +221,25 @@ run_beta <- function(data.in, out.df, dgp, inf_mean, delta=NULL, inf_var=NULL, t
     group_by(unit, week) %>%
     summarise(inc = sum(inc))
   data.untrt$Y.untrt.beta <- beta.untrt$inc
+  
+  # Simulate case trajectories using treated beta
+  beta.trt <- rbindlist(lapply(trt.IDs, function(ind) {
+    I0 <- data.deagg$I[data.deagg$unit==ind & data.deagg$t==burnin+1]
+    recovered <- data.deagg$R[data.deagg$unit==ind & data.deagg$t==burnin+1]
+    trans_prob <- data.deagg$beta_est[data.deagg$unit==ind]
+    if (dgp=="SIR") {
+      run_SIR_varying(pop.size=pop.size, seeds=I0, recovered=recovered, trans_prob = trans_prob,
+                      time_steps=(T0+T1), inf_mean=inf_mean, inf_var=inf_var)
+    } else if (dgp=="SEIR") {
+      E0 <- data.deagg$E[data.deagg$unit==ind & data.deagg$t==burnin+1]
+      run_SEIR_varying(pop.size=pop.size, I0=I0, E0=E0, recovered=recovered, trans_prob = trans_prob,
+                       time_steps=(T0+T1), inf_mean=inf_mean, delta=delta)
+    }
+  })) %>%
+    mutate(unit=rep(trt.IDs, each=(T0+T1)), week = ceiling(t/agg)) %>%
+    group_by(unit, week) %>%
+    summarise(inc = sum(inc))
+  data.untrt$Y.trt.beta <- beta.trt$inc
   
   # Bias correction
   for (i in trt.IDs) {
@@ -231,7 +250,9 @@ run_beta <- function(data.in, out.df, dgp, inf_mean, delta=NULL, inf_var=NULL, t
     }
   }
   
-  out <- data.frame(model="beta", effect=exp(tail(coef(beta.fit), 1)), p=stata.out$p, 
+  out <- data.frame(model="beta", effect=exp(tail(coef(beta.fit), 1)), 
+                    p=stata.out$p, beta.var=beta.var,
+                    Y.trt=mean(data.untrt$Y.trt.beta[data.untrt$trt.time]),
                     Y.untrt=mean(data.untrt$Y.untrt.beta[data.untrt$trt.time]),
                     Y.untrt.adj1=mean(data.untrt$Y.beta.adj1[data.untrt$trt.time]), 
                     Y.untrt.adj2=mean(data.untrt$Y.beta.adj2[data.untrt$trt.time]))

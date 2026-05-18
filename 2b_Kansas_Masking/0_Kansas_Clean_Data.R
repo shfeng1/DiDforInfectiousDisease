@@ -35,6 +35,7 @@ df.clean <- df.model %>%
   mutate(week = ceiling(time / 7),
          stnnewcases7davg = ifelse(stnnewcases7davg<0, 0, stnnewcases7davg),
          prevalence_lag = lag(prevalence, 1),
+         I_est_lag = lag(I_est, 1),
          ncounty = as.numeric(haven::as_factor(ncounty))) %>%
   group_by(ncounty, week) %>%
   summarise(start_date = min(date), dayssincefirstcase = min(dayssincefirstcase),
@@ -44,7 +45,7 @@ df.clean <- df.model %>%
             infected_est = mean(infected_est, na.rm = T),
             prevalence_lag = mean(prevalence_lag, na.rm = T),
             Rt_est = sum(infected_est) / sum(prevalence_lag),
-            Rt_exposure = sum(infections) / sum(I_est)) %>%
+            Rt_exposure = sum(infections) / sum(I_est_lag)) %>%
   dplyr::select(ncounty, week, start_date, dayssincefirstcase, coestpop2019, sus_frac, stnnewcases7davg, 
                 infections, growth, infected_est, prevalence_lag, E_lag, Rt, Rt_est, Rt_exposure) %>%
   ungroup() %>%

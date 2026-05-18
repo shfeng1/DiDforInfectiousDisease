@@ -19,7 +19,7 @@ attgt.glm <- function(yname, tname, idname, gname, weightsname,
   rownames(ATT_gt) <- glist
   colnames(ATT_gt) <- min(glist):max(time)
   
-  CI.out <- readRDS("CI.rds")
+  # CI.out <- readRDS("CI.rds")
   for (g in glist) {
     for (t in g:max(time)) {
       # print(paste0("Working on g=", g, ", t=", t))
