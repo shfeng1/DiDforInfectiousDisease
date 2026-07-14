@@ -9,10 +9,11 @@ options("RStata.StataPath"="/Applications/Stata/StataSE.app/Contents/MacOS/stata
 options("RStata.StataVersion"=15.1)
 options("max.print"=2000)
 
-source("attgt.glm.R")
+source("./1a_Scripts/0_attgt.glm.R")
 ##########################################################################################################################################
-df.clean <- readRDS("School Data/df.clean.rds")
-data_in <- df.clean %>% filter(week <= 40)
+df.clean <- readRDS("./0_Data/School_Cleaned.rds")
+data_in <- df.clean %>% filter(week <= 40) %>%
+  mutate(OrgCode = as.numeric(factor(OrgCode)))
 ######################################### INCIDENCE #########################################
 inc <- attgt.glm(yname = "PosPer1K", tname = "week", idname = "OrgCode", gname = "treat.time", 
                  control_group="notyettreated", weightsname = "total", data_in=data_in,

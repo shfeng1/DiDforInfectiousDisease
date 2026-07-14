@@ -35,7 +35,7 @@ print(paste0("Treatment effect: ", round(exp(beta.coef), 2), " with CI: (",
 # Treatment effect: 0.94 with CI: (0.87, 1.02) and p-value = 0.1123
 ####################################################################################################################################
 ## CONVERT TO AME
-data.model <- df.in %>% mutate(unit=ncounty, beta_est=beta/inf_days, S_frac=sus_frac, week=week-min(df.in$week)+1)
+data.model <- df.in %>% mutate(unit=ncounty, beta_est=beta/inf_days, inc=infections, S_frac=sus_frac, week=week-min(df.in$week)+1)
 T0 <- length(unique(data.model$start_date[! data.model$trt.time]))*agg
 T1 <- length(unique(data.model$start_date))*agg - T0
 out.df <- df.model %>% filter(date >= "2020-06-05", date < "2020-12-11",
@@ -43,25 +43,37 @@ out.df <- df.model %>% filter(date >= "2020-06-05", date < "2020-12-11",
                               ! ncounty %in% df.first$ncounty[df.first$date >= "2020-06-24"]) %>%
   group_by(ncounty) %>% arrange(time) %>%
   mutate(unit = ncounty, S_frac = sus_frac, Rt = NULL, I = I_est, R = immune, E = infections, t = 1:n())
-
 beta.AME <- data.frame(type = c("point estimate", "lower bound", "upper bound"),
-                       coef = c(beta.coef, lower.bound, upper.bound), AME = NA)
+                           coef = c(beta.coef, lower.bound, upper.bound), AME = NA,
+                           AME.adj1 = NA, AME.adj2 = NA)
 for (coef in beta.AME$coef) {
-  set.seed(2025, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
-  sim.out <- foreach(s = 1:200,
+  set.seed(12345, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
+  sim.out <- foreach(s = 1:100, 
                      .combine = "rbind",
-                     .errorhandling = "remove") %dopar% 
+                     .errorhandling = "stop") %dopar% 
     { 
-      run_beta(data.in=data.model, out.df, dgp="SEIR", inf_mean=inf_days, delta=delta,
-             trt.IDs=county.trt, coef=coef, parallel.id=s)
+      tryCatch(run_beta(data.in=data.model, out.df, dgp="SEIR", inf_mean=inf_days, delta=delta,
+                        trt.IDs=county.trt, coef=coef, parallel.id=s, sim=TRUE),
+               
+               error = function(e) {
+                 msg <- conditionMessage(e)
+                 
+                 # Allow the known transient NFS write failure
+                 if (grepl("unable to open file for writing", msg, fixed = TRUE) &&
+                     grepl("Stale NFS file handle", msg, fixed = TRUE)) {
+                   return(NULL)
+                 }
+                 
+                 # Any other error stops the parallel batch.
+                 stop(e)
+               })
     }
-  beta.AME$AME[beta.AME$coef==coef] <- mean(sim.out$Y.trt - sim.out$Y.untrt)
+  beta.AME$AME[beta.AME$coef==coef] <- mean(sim.out$AME)
+  beta.AME$AME.adj1[beta.AME$coef==coef] <- mean(sim.out$AME.adj1)
+  beta.AME$AME.adj2[beta.AME$coef==coef] <- mean(sim.out$AME.adj2)
 }
-beta.var <- unique(sim.out$beta.var)
-beta.AME <- beta.AME %>% mutate(AME.adj1 = AME / (1 + beta.var/2), AME.adj2 = AME / exp(beta.var/2))
-
 print(paste0("AME: ", format(round(beta.AME$AME.adj2[1], 1), nsmall=1), " with CI: (", 
              format(round(beta.AME$AME.adj2[2], 1), nsmall=1), ", ", 
              format(round(beta.AME$AME.adj2[3], 1), nsmall=1), ")", " and p-value = ",
              strsplit(trimws(tail(beta.out, 1)), "     ")[[1]][2]))
-# AME: -21.0 with CI: (-51.9, 4.0) and p-value = 0.1123
+# AME: -24.8 with CI: (-61.7, 4.4) and p-value = 0.1123

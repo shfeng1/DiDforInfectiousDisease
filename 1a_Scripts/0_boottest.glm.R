@@ -14,7 +14,7 @@ boottest.glm <- function(fit, M=5000, gweight, model, seed=12345) {
           mutate(score = score[,i]) %>%
           group_by(ID) %>%
           mutate(err_sgn_var = rbinom(n(), prob = .5, size = 1),  # specify error sign
-                 err_sgn = ifelse(err_sgn_var, -1, 1),
+                 err_sgn = ifelse(err_sgn_var[1], -1, 1), # generate +/- 1 for the entire cluster
                  score.boot = err_sgn/n()*score)
         df.boot$score.boot
       }))

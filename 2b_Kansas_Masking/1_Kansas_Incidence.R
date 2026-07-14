@@ -57,9 +57,9 @@ print(paste0("Treatment effect: ", round(exp(loginc.coef), 2), " with CI: (",
              strsplit(trimws(tail(loginc.out, 1)), "     ")[[1]][2]))
 ####################################################################################################################################
 # calculate AMEs
-loginc.AME <- mean(loginc.fit$fitted.values[df.in$trt_post]*exp(tail(loginc.fit$coef, 1))-loginc.fit$fitted.values[df.in$trt_post]) # -19.93338
-loginc.AME.lo <- mean(loginc.fit$fitted.values[df.in$trt_post]*exp(lower.bound)-loginc.fit$fitted.values[df.in$trt_post]) # -24.57786
-loginc.AME.hi <- mean(loginc.fit$fitted.values[df.in$trt_post]*exp(upper.bound)-loginc.fit$fitted.values[df.in$trt_post]) # -9.640277
+loginc.AME <- mean(df.in$stnnewcases7davg[df.in$trt_post] - df.in$stnnewcases7davg[df.in$trt_post]/exp(tail(loginc.fit$coef, 1)))
+loginc.AME.lo <- mean(df.in$stnnewcases7davg[df.in$trt_post] - df.in$stnnewcases7davg[df.in$trt_post]/exp(lower.bound))
+loginc.AME.hi <- mean(df.in$stnnewcases7davg[df.in$trt_post] - df.in$stnnewcases7davg[df.in$trt_post]/exp(upper.bound))
 print(paste0("AME: ", round(loginc.AME, 1), " with CI: (", 
              round(loginc.AME.lo, 1), ", ", round(loginc.AME.hi, 1), ")", " and p-value = ",
              strsplit(trimws(tail(loginc.out, 1)), "     ")[[1]][2]))

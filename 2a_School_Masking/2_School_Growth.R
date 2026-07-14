@@ -37,29 +37,22 @@ ATT <- colMeans(ATT_gt[rownames(ATT_gt) >= 0,])
 print("------------------ LOG GROWTH MODEL ------------------")
 print(paste0("15-week treatment effect: ", round(exp(mean(ATT)), 2), " with CI: (",  
              round(exp(quantile(ATT, 0.025)), 2), ", ", round(exp(quantile(ATT, 0.975)), 2), ")"))
-mean(ATT) # -0.1135901
-exp(mean(ATT)) # RR 0.8926238
-quantile(ATT, c(0.025, 0.975)) # CI (-0.3506821, 0.1270042)
-exp(quantile(ATT, c(0.025, 0.975))) # RR (0.7042076, 1.1354218)
-2*pnorm(abs(mean(ATT)/sd(ATT)), lower.tail=FALSE) # 0.3553724
+# 15-week treatment effect: 0.89 with CI: (0.7, 1.12)
+2*pnorm(abs(mean(ATT)/sd(ATT)), lower.tail=FALSE) # 0.3435519
 
 AMEs <- apply(ATT_gt, 2, function(coef) growth_AME(coef) )
 print(paste0("15-week AME: ", round(growth_AME(coef=rowMeans(ATT_gt)), 1), " with CI: (",  
              round(quantile(AMEs, 0.025), 1), ", ", round(quantile(AMEs, 0.975), 1), ")"))
-# AME = -317.9912; CI (-6844.8307, 93.3456)
+# 15-week AME: -343.4 with CI: (-8402.1, 88.4)
 ##################################################   KEEP 5 WEEKS POST INTERVENTION
 ATT <- colMeans(ATT_gt[rownames(ATT_gt) %in% (0:4),])
 
 print(paste0("5-week treatment effect: ", round(exp(mean(ATT)), 2), " with CI: (",  
              round(exp(quantile(ATT, 0.025)), 2), ", ", round(exp(quantile(ATT, 0.975)), 2), ")"))
-mean(ATT) # -0.03064354
-exp(mean(ATT)) # RR 0.9698212
-quantile(ATT, c(0.025, 0.975)) # CI (-0.2492987, 0.1919316)
-exp(quantile(ATT, c(0.025, 0.975))) # RR (0.7793471, 1.2115876)
-2*pnorm(abs(mean(ATT)/sd(ATT)), lower.tail=FALSE) # 0.7893808
+# 5-week treatment effect: 0.97 with CI: (0.77, 1.2)
+2*pnorm(abs(mean(ATT)/sd(ATT)), lower.tail=FALSE) # 0.7682157
 
 AMEs <- apply(ATT_gt, 2, function(coef) growth_AME(coef=coef, subset=c(0:4)) )
 print(paste0("5-week AME: ", round(growth_AME(coef=rowMeans(ATT_gt), subset=c(0:4)) , 1), " with CI: (",  
              round(quantile(AMEs, 0.025), 1), ", ", round(quantile(AMEs, 0.975), 1), ")"))
-quantile(AMEs, c(0.025, 0.975)) 
-# AME = -7.032802; CI (-47.376461, 9.134382)
+# 5-week AME: -7.4 with CI: (-51.2, 8.9)

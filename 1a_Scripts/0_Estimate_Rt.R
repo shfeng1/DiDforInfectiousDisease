@@ -69,6 +69,14 @@ compute_Rt_cohort <- function(incidence, ID, inf_mean, Ttot) {
   return(Rt_cohort)
 }
 
+# simulation error handler
+sim_error <- function(class, message) {
+  stop(structure(
+    list(message = message, call = NULL),
+    class = c(class, "error", "condition")
+  ))
+}
+
 # 1. Simulate data according to SIR or SEIR
 # 2. Aggregate data to the desired level (default: weekly)
 # 3. Estimate R_t and beta_t
@@ -148,6 +156,15 @@ process_data <- function(out.df, inf_mean, agg=7, dgp="SIR", discard_start=burni
            week = week - discard_start/agg) %>%
     filter(week > 0, 
            week <= max(week) - discard_end/agg)
+  
+  # Classify the known extinction case.
+  # This check occurs before compute_Rt_wt(), which may fail when incidence goes to zero
+  if (!any(tail(df$inc, 2) > 0)) {
+    sim_error(
+      "epidemic_extinct",
+      "The epidemic became extinct before producing usable incidence."
+    )
+  }
   
   return(df)
 }

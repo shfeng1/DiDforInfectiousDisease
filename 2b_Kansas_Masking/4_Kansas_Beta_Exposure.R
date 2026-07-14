@@ -12,7 +12,6 @@ beta_exposure.fit <- glm(beta_exposure ~ -1 + factor(week) + factor(ncounty) + f
 beta_exposure.coef <- tail(beta_exposure.fit$coefficients, 1) # -0.08564578
 beta_exposure.out <- capture.output(stata("glm beta_exposure trt_post i.ncounty i.week, family(poisson) link(log)
     boottest trt_post, cluster(ncounty) reps(10000)", stata.echo = T, data.in = df.in))
-# z = -2.0810; p = 0.0429; b = -0.0856458; RR = 0.9179193
 ####################################################################################################################################
 # Get confidence interval
 beta_exposure.p <- data.frame(b0=as.numeric(beta_exposure.coef), p=0.0429)
@@ -36,7 +35,7 @@ print(paste0("Treatment effect: ", round(exp(beta_exposure.coef), 2), " with CI:
 # Treatment effect: 0.92 with CI: (0.85, 1.00) and p-value = 0.0429
 ####################################################################################################################################
 ## CONVERT TO AME
-data.model <- df.in %>% mutate(unit=ncounty, beta_est=beta_exposure*(agg/delta), S_frac=sus_frac, week=week-min(df.in$week)+1)
+data.model <- df.in %>% mutate(unit=ncounty, beta_est=beta_exposure*(agg/delta), inc=infections, S_frac=sus_frac, week=week-min(df.in$week)+1)
 T0 <- length(unique(data.model$start_date[! data.model$trt.time]))*agg
 T1 <- length(unique(data.model$start_date))*agg - T0
 out.df <- df.model %>% filter(date >= "2020-06-05", date < "2020-12-11",
@@ -46,23 +45,36 @@ out.df <- df.model %>% filter(date >= "2020-06-05", date < "2020-12-11",
   mutate(unit = ncounty, S_frac = sus_frac, Rt = NULL, I = I_est, R = 0, E = infections, t = 1:n())
 
 beta_exposure.AME <- data.frame(type = c("point estimate", "lower bound", "upper bound"),
-                                coef = c(beta_exposure.coef, lower.bound, upper.bound), AME = NA)
+                         coef = c(beta_exposure.coef, lower.bound, upper.bound), AME = NA,
+                         AME.adj1 = NA, AME.adj2 = NA)
 for (coef in beta_exposure.AME$coef) {
-  set.seed(2026, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
-  sim.out <- foreach(s = 1:200, 
+  set.seed(12345, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
+  sim.out <- foreach(s = 1:100, 
                      .combine = "rbind",
-                     .errorhandling = "remove") %dopar% 
+                     .errorhandling = "stop") %dopar% 
     { 
-      run_beta(data.in=data.model, out.df, dgp="SEIR", inf_mean=inf_days, delta=delta,
-               trt.IDs=county.trt, coef=coef, parallel.id=s)
+      tryCatch(run_beta(data.in=data.model, out.df, dgp="SEIR", inf_mean=inf_days, delta=delta,
+                        trt.IDs=county.trt, coef=coef, parallel.id=s, sim=TRUE),
+               
+               error = function(e) {
+                 msg <- conditionMessage(e)
+                 
+                 # Allow the known transient NFS write failure
+                 if (grepl("unable to open file for writing", msg, fixed = TRUE) &&
+                     grepl("Stale NFS file handle", msg, fixed = TRUE)) {
+                   return(NULL)
+                 }
+                 
+                 # Any other error stops the parallel batch.
+                 stop(e)
+               })
     }
-  beta_exposure.AME$AME[beta_exposure.AME$coef==coef] <- mean(sim.out$Y.trt - sim.out$Y.untrt)
+  beta_exposure.AME$AME[beta_exposure.AME$coef==coef] <- mean(sim.out$AME)
+  beta_exposure.AME$AME.adj1[beta_exposure.AME$coef==coef] <- mean(sim.out$AME.adj1)
+  beta_exposure.AME$AME.adj2[beta_exposure.AME$coef==coef] <- mean(sim.out$AME.adj2)
 }
-beta.var <- unique(sim.out$beta.var)
-beta_exposure.AME <- beta_exposure.AME %>% mutate(AME.adj1 = AME / (1 + beta.var/2), AME.adj2 = AME / exp(beta.var/2))
-
 print(paste0("AME: ", format(round(beta_exposure.AME$AME.adj2[1], 1), nsmall=1), " with CI: (", 
              format(round(beta_exposure.AME$AME.adj2[2], 1), nsmall=1), ", ", 
              format(round(beta_exposure.AME$AME.adj2[3], 1), nsmall=1), ")", " and p-value = ",
              strsplit(trimws(tail(beta_exposure.out, 1)), "     ")[[1]][2]))
-# AME: -30.6 with CI: (-64.0, -0.4) and p-value = 0.0429
+# AME: -33.8 with CI: (-77.0, -0.3) and p-value = 0.0429

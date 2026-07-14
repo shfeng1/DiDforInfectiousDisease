@@ -36,45 +36,40 @@ ATT <- colSums(ATT_gt[rownames(ATT_gt) >= 0,])
 print("------------------ INCIDENCE MODEL ------------------")
 print(paste0("15-week treatment effect and AME are the same: ", round(mean(ATT), 1), " with CI: (",  
              round(quantile(ATT, 0.025), 1), ", ", round(quantile(ATT, 0.975), 1), ")"))
-# 47.98668; CI (38.84906, 56.80476)
+# 15-week treatment effect and AME are the same: 47.8 with CI: (38.4, 57.4)
 ##################################################   KEEP 5 WEEKS POST INTERVENTION
 rownames(ATT_gt) <- time_to_trt
 ATT <- colSums(ATT_gt[rownames(ATT_gt) %in% (0:4),])
 
 print(paste0("5-week treatment effect and AME are the same: ", round(mean(ATT), 1), " with CI: (",  
              round(quantile(ATT, 0.025), 1), ", ", round(quantile(ATT, 0.975), 1), ")"))
-# 8.589955; CI (5.707202, 11.329474)
+# 5-week treatment effect and AME are the same: 8.5 with CI: (5.6, 11.5)
 ############################################### LOG INC ##############################################
 fit <- fepois(y ~ sunab(group, time, ref.c = 10000) | ID + time, weights = df_sunab$wt, data = df_sunab)
 time_to_trt <- as.numeric(sapply(names(coef(fit)), function(var) substr(var, 7, nchar(var))))
 ATT_gt <- boottest.glm(fit, M=1000, gweight=gweight, model="loginc")
 rownames(ATT_gt) <- time_to_trt
-ATT <- colMeans(ATT_gt[rownames(ATT_gt) >= 0,]) # 0.1714177 (-0.1004611, 0.4538903), RR 1.186986 (0.9044203, 1.574425)
+ATT <- colMeans(ATT_gt[rownames(ATT_gt) >= 0,])
 
 print("------------------ LOG INCIDENCE MODEL ------------------")
 print(paste0("15-week treatment effect: ", round(exp(mean(ATT)), 2), " with CI: (",  
              round(exp(quantile(ATT, 0.025)), 2), ", ", round(exp(quantile(ATT, 0.975)), 2), ")"))
-mean(ATT) # 0.1771345; RR 1.193792
-quantile(ATT, c(0.025, 0.975)) # CI (-0.09895234, 0.46396473)
-exp(quantile(ATT, c(0.025, 0.975))) # RR (0.9057859, 1.5903669)
-2*pnorm(abs(mean(ATT)/sd(ATT)), lower.tail=FALSE) # p = 0.2030332
+# 15-week treatment effect: 1.19 with CI: (0.89, 1.56)
+2*pnorm(abs(mean(ATT)/sd(ATT)), lower.tail=FALSE) # p = 0.239113
 
 AMEs <- apply(ATT_gt, 2, function(coef) loginc_AME(coef))
 print(paste0("15-week AME: ", round(loginc_AME(rowMeans(ATT_gt)), 1), " with CI: (",  
              round(quantile(AMEs, 0.025), 1), ", ", round(quantile(AMEs, 0.975), 1), ")"))
-# AME = 13.76217; CI (-30.37904, 47.85838)
+# 15-week AME: 12.9 with CI: (-33.2, 47.0)
 ##################################################   KEEP 5 WEEKS POST INTERVENTION
 rownames(ATT_gt) <- time_to_trt
 ATT <- colMeans(ATT_gt[rownames(ATT_gt) %in% (0:4),])
 print(paste0("5-week treatment effect: ", round(exp(mean(ATT)), 2), " with CI: (",  
              round(exp(quantile(ATT, 0.025)), 2), ", ", round(exp(quantile(ATT, 0.975)), 2), ")"))
-
-mean(ATT) # 0.4879132; RR 1.628913
-quantile(ATT, c(0.025, 0.975)) # CI (0.2321967, 0.7476356)
-exp(quantile(ATT, c(0.025, 0.975))) # RR (1.261368, 2.112000)
-2*pnorm(abs(mean(ATT)/sd(ATT)), lower.tail=FALSE) # p = 8.786391e-05
+# 5-week treatment effect: 1.62 with CI: (1.24, 2.09)
+2*pnorm(abs(mean(ATT)/sd(ATT)), lower.tail=FALSE) # p = 0.0002542965
 
 AMEs <- apply(ATT_gt, 2, function(coef) loginc_AME(coef, c(0:4)))
 print(paste0("5-week AME: ", round(loginc_AME(coef=rowMeans(ATT_gt), subset=c(0:4)), 1), " with CI: (",  
              round(quantile(AMEs, 0.025), 1), ", ", round(quantile(AMEs, 0.975), 1), ")"))
-# AME = 7.031067; CI (1.852366, 10.967973)
+# 5-week AME: 6.9 with CI: (1.6, 10.8)

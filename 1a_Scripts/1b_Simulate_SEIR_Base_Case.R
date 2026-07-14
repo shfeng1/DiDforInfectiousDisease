@@ -17,11 +17,34 @@ for (j in 1:nrow(sim.param)) {
                  .combine = "rbind",
                  .errorhandling = "remove") %dopar%
     {
-      SEIR_sim(pop.size=pop.size, N=N, N1=N1, seed1=seed1, seed2=seed2,
-               T0=T0, T1=T1, burnin=burnin, inf_mean=inf_mean, delta=delta,
-               trans_prob.base1=sim.param$trans_prob.base1[j],
-               trans_prob.base2=sim.param$trans_prob.base2[j],
-               eff.multi1=sim.param$eff.multi[j], parallel.id=s)
+      tryCatch(
+        SEIR_sim(pop.size=pop.size, N=N, N1=N1, seed1=seed1, seed2=seed2,
+                 T0=T0, T1=T1, burnin=burnin, inf_mean=inf_mean, delta=delta,
+                 trans_prob.base1=sim.param$trans_prob.base1[j],
+                 trans_prob.base2=sim.param$trans_prob.base2[j],
+                 eff.multi1=sim.param$eff.multi[j], parallel.id=s),
+        
+        # Allow epidemic extinction to pass
+        epidemic_extinct = function(e) NULL,
+        
+        # Allow the known writer error
+        error = function(e) {
+          msg <- conditionMessage(e)
+          
+          allowed_write_error <-
+            grepl("unable to open file for writing", msg, fixed = TRUE) &&
+            (
+              grepl("Stale NFS file handle", msg, fixed = TRUE) ||
+                grepl("Operation timed out", msg, fixed = TRUE)
+            )
+          
+          if (allowed_write_error) {
+            return(NULL)
+          }
+          
+          # Any other error stops the parallel batch.
+          stop(e)
+        })
     }
   sim.out <- rbind(sim.out, out)
 }

@@ -12,7 +12,6 @@ Rt_est.fit <- glm(Rt_est ~ -1 + factor(week) + factor(ncounty) + factor(trt_post
 Rt_est.coef <- tail(Rt_est.fit$coefficients, 1) # -0.06769345
 Rt_est.out <- capture.output(stata("glm Rt_est trt_post i.ncounty i.week, family(poisson) link(log)
     boottest trt_post, cluster(ncounty) reps(10000)", stata.echo = T, data.in = df.in))
-# z = -1.3702; p = 0.1895; b = -0.06769345; RR = 0.9345469
 ####################################################################################################################################
 # Get confidence interval
 Rt_est.p <- data.frame(b0=as.numeric(Rt_est.coef), p=0.1895)
@@ -32,6 +31,7 @@ print("------------------ LOG Rt (PREVALENCE) MODEL ------------------")
 print(paste0("Treatment effect: ", round(exp(Rt_est.coef), 2), " with CI: (", 
              round(exp(lower.bound), 2), ", ", round(exp(upper.bound), 2), ")", " and p-value = ",
              strsplit(trimws(tail(Rt_est.out, 1)), "     ")[[1]][2]))
+# Treatment effect: 0.93 with CI: (0.85, 1.04) and p-value = 0.1895
 ####################################################################################################################################
 ## CONVERT TO AME
 data.model <- df.in %>% mutate(unit=ncounty, inc=infections, S_frac=sus_frac, R_est=Rt_est, week=week - min(df.in$week)+1)
@@ -44,22 +44,37 @@ out.df <- df.model %>% filter(date >= "2020-06-05", date < "2020-12-11",
   group_by(ncounty) %>% arrange(time) %>%
   mutate(unit = ncounty, S_frac = sus_frac, Rt = NULL, I = prevalence, R = (immune+deaths), E = infected_est, t = 1:n())
 
-Y.obs <- mean(data.model$inc[data.model$trt_post==1])
 Rt_est.AME <- data.frame(type = c("point estimate", "lower bound", "upper bound"),
-                         coef = c(Rt_est.coef, lower.bound, upper.bound), AME = NA)
+                         coef = c(Rt_est.coef, lower.bound, upper.bound), AME = NA,
+                         AME.adj1 = NA, AME.adj2 = NA)
 for (coef in Rt_est.AME$coef) {
-  set.seed(2025, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
+  set.seed(12345, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
   sim.out <- foreach(s = 1:100, 
                      .combine = "rbind",
-                     .errorhandling = "remove") %dopar% 
+                     .errorhandling = "stop") %dopar% 
     { 
-      run_Rt(data.in=data.model, out.df, type="est", dgp="SEIR", inf_mean=inf_days, delta=delta, 
-             trt.IDs=county.trt, coef=coef, parallel.id=s)
+      tryCatch(run_Rt(data.in=data.model, out.df, dgp="SEIR", inf_mean=inf_days, delta=delta, 
+                      trt.IDs=county.trt, coef=coef, parallel.id=s, sim=TRUE),
+               
+               error = function(e) {
+                 msg <- conditionMessage(e)
+                 
+                 # Allow the known transient NFS write failure
+                 if (grepl("unable to open file for writing", msg, fixed = TRUE) &&
+                     grepl("Stale NFS file handle", msg, fixed = TRUE)) {
+                   return(NULL)
+                 }
+                 
+                 # Any other error stops the parallel batch.
+                 stop(e)
+               })
     }
-  Rt_est.AME$AME[Rt_est.AME$coef==coef] <- Y.obs - mean(sim.out$Y.untrt)
+  Rt_est.AME$AME[Rt_est.AME$coef==coef] <- mean(sim.out$AME)
+  Rt_est.AME$AME.adj1[Rt_est.AME$coef==coef] <- mean(sim.out$AME.adj1)
+  Rt_est.AME$AME.adj2[Rt_est.AME$coef==coef] <- mean(sim.out$AME.adj2)
 }
-print(paste0("AME: ", format(round(Rt_est.AME$AME[1], 1), nsmall=1), " with CI: (", 
-             format(round(Rt_est.AME$AME[2], 1), nsmall=1), ", ", 
-             format(round(Rt_est.AME$AME[3], 1), nsmall=1), ")", " and p-value = ",
+print(paste0("AME: ", format(round(Rt_est.AME$AME.adj2[1], 1), nsmall=1), " with CI: (", 
+             format(round(Rt_est.AME$AME.adj2[2], 1), nsmall=1), ", ", 
+             format(round(Rt_est.AME$AME.adj2[3], 1), nsmall=1), ")", " and p-value = ",
              strsplit(trimws(tail(Rt_est.out, 1)), "     ")[[1]][2]))
-# AME: -31.3 with CI: (-81.1, 19.1) and p-value = 0.1895
+# AME: -39.1 with CI: (-84.8, 10.5) and p-value = 0.1895
