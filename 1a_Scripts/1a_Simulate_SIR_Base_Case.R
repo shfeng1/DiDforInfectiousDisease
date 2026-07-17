@@ -13,7 +13,7 @@ sim.out <- data.frame()
 for (j in 1:nrow(sim.param)) {
   print(j)
   # seeds were set as (j, 1000+j, 2000+j, 3000+j, 4000+j) # I split 5K simulations into 5 runs on my local machine
-  set.seed(j, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
+  set.seed(3000+j, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
   out <- foreach(s = 1:nsim,
                  .combine = "rbind",
                  .errorhandling = "stop") %dopar%
@@ -50,6 +50,6 @@ for (j in 1:nrow(sim.param)) {
   sim.out <- rbind(sim.out, out)
 }
 
-saveRDS(sim.out, "./4_Output/SIR_base_case.rds")
-# saveRDS(rbind(sim.out, readRDS("./4_Output/SIR_base_case.rds")), "./4_Output/SIR_base_case.rds")
+# saveRDS(sim.out, "./4_Output/SIR_base_case.rds")
+saveRDS(rbind(sim.out, readRDS("./4_Output/SIR_base_case.rds")), "./4_Output/SIR_base_case.rds")
 Sys.time()

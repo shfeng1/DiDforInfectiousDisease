@@ -12,7 +12,7 @@ sim.out <- data.frame()
 for (j in 1:nrow(sim.param)) {
   print(j)
   # seeds were set as (j, 1000+j, 2000+j, 3000+j, 4000+j)
-  set.seed(j, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
+  set.seed(4000+j, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
   out <- foreach(s = 1:nsim,
                  .combine = "rbind",
                  .errorhandling = "remove") %dopar%

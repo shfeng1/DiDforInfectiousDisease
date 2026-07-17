@@ -47,7 +47,7 @@ run_loginc <- function(data.in, parallel.id) {
   return(out)
 }
 
-run_growth <- function(data.in, parallel.id=0, trt.IDs=1:N1, coef=NULL) {
+run_growth <- function(data.in, parallel.id=0, trt.IDs=1:N1, coef=NULL, sim=FALSE) {
   growth.fit <- glm(growth ~ -1 + factor(week) + factor(unit) + factor(trt_post), family = poisson, data = data.in)
   command <- "set matsize 1000
     glm growth i.unit i.week 1.trt_post, family(poisson) link(log)
@@ -64,7 +64,7 @@ run_growth <- function(data.in, parallel.id=0, trt.IDs=1:N1, coef=NULL) {
     # then use the untreated growth rates to recover the trajectory of untreated potential outcome on the case scale
     data.untrt$growth_fit <- predict(growth.fit, newdata = data.untrt, type = "response") 
   } else {
-    data.untrt$growth_fit <- growth.fit$fitted.values[data.in$trt.unit] / exp(coef)
+    data.untrt$growth_fit <- data.untrt$growth / exp(coef)
   }
   
   growth.df <- data.untrt %>% # at individual unit level for each t
@@ -72,20 +72,25 @@ run_growth <- function(data.in, parallel.id=0, trt.IDs=1:N1, coef=NULL) {
            week >= T0/agg) %>% # post-intervention + the last period before intervention (which will be used as baseline)
     mutate(trt_post = (trt.unit & trt.time),
            # initialize the last period before intervention to baseline value and build on that, i.e., the observed incidence
-           Y.untrt.growth = ifelse(trt_post, NA, inc))  %>%
-    dplyr::select(unit, week, S_frac, trt.unit, trt.time, trt_post, inc, Y.untrt.growth, growth, growth_fit)
+           Y.untrt.growth = ifelse(trt_post, NA, inc),
+           Y.trt.growth = ifelse(trt_post, NA, inc))  %>%
+    dplyr::select(unit, week, S_frac, trt.unit, trt.time, trt_post, inc, Y.untrt.growth, growth_fit, Y.trt.growth, growth)
   
   # Translate to untreated potential outcomes on the case scale
   for (unit in unique(growth.df$unit)) {
     for (time in (T0/agg+1):((T0+T1)/agg)) { # for each of the post-intervention period
       growth.df$Y.untrt.growth[growth.df$unit==unit & growth.df$week==time] <- growth.df$Y.untrt.growth[growth.df$unit==unit & growth.df$week==time-1] *
         growth.df$growth_fit[growth.df$unit==unit & growth.df$week==time]
+      growth.df$Y.trt.growth[growth.df$unit==unit & growth.df$week==time] <- growth.df$Y.trt.growth[growth.df$unit==unit & growth.df$week==time-1] *
+        growth.df$growth[growth.df$unit==unit & growth.df$week==time]
     }
   }
-  data.untrt$Y.untrt.growth <- NA
+  data.untrt$Y.untrt.growth <- data.untrt$Y.trt.growth <- NA
   data.untrt$Y.untrt.growth[data.untrt$week >= T0/agg] <- growth.df$Y.untrt.growth
+  data.untrt$Y.trt.growth[data.untrt$week >= T0/agg] <- growth.df$Y.trt.growth
   data.untrt$AME.raw <- data.untrt$inc - data.untrt$Y.untrt.growth
-  data.untrt$AME.raw.adj1 <- data.untrt$AME.raw.adj2 <- NA
+  data.untrt$AME.sim <- data.untrt$Y.trt.growth - data.untrt$Y.untrt.growth
+  data.untrt$AME.raw.adj1 <- data.untrt$AME.raw.adj2 <- data.untrt$AME.sim.adj1 <- data.untrt$AME.sim.adj2 <- NA
   
   # Bias correction
   for (i in trt.IDs) {
@@ -98,10 +103,17 @@ run_growth <- function(data.in, parallel.id=0, trt.IDs=1:N1, coef=NULL) {
     }
   }
   
-  out <- data.frame(model="growth", effect=exp(tail(coef(growth.fit), 1)), p=stata.out$p, 
-                    AME=mean(data.untrt$AME.raw[data.untrt$trt.time]), 
-                    AME.adj1=mean(data.untrt$AME.raw.adj1[data.untrt$trt.time]), 
-                    AME.adj2=mean(data.untrt$AME.raw.adj2[data.untrt$trt.time]))
+  if (sim) {
+    out <- data.frame(model="growth", effect=exp(tail(coef(growth.fit), 1)), p=stata.out$p, 
+                      AME=mean(data.untrt$AME.sim[data.untrt$trt.time]), 
+                      AME.adj1=mean(data.untrt$AME.sim.adj1[data.untrt$trt.time]), 
+                      AME.adj2=mean(data.untrt$AME.sim.adj2[data.untrt$trt.time]))
+  } else {
+    out <- data.frame(model="growth", effect=exp(tail(coef(growth.fit), 1)), p=stata.out$p, 
+                      AME=mean(data.untrt$AME.raw[data.untrt$trt.time]), 
+                      AME.adj1=mean(data.untrt$AME.raw.adj1[data.untrt$trt.time]), 
+                      AME.adj2=mean(data.untrt$AME.raw.adj2[data.untrt$trt.time]))
+  }
   rownames(out) <- NULL
   return(out)
 }
@@ -129,7 +141,7 @@ run_Rt <- function(data.in, out.df, type="est", dgp, inf_mean, delta=NULL, inf_v
     # For log Rt models, first predict untreated Rt's using the fitted model
     data.untrt$Rt_fit <- predict(Rt.fit, newdata = data.untrt, type = "response") 
   } else {
-    data.untrt$Rt_fit <- Rt.fit$fitted.values[data.in$trt.unit] / exp(coef)
+    data.untrt$Rt_fit <- data.untrt$Rt / exp(coef)
   }
   
   # then de-aggregate the weekly data to daily, assuming constant transmission rate across the weekly window
@@ -197,12 +209,12 @@ run_Rt <- function(data.in, out.df, type="est", dgp, inf_mean, delta=NULL, inf_v
   }
   
   if (sim) {
-    out <- data.frame(model="beta", effect=exp(tail(coef(Rt.fit), 1)), p=stata.out$p, 
+    out <- data.frame(model=paste0("Rt_", type), effect=exp(tail(coef(Rt.fit), 1)), p=stata.out$p, 
                       AME=mean(data.untrt$AME.sim[data.untrt$trt.time]), 
                       AME.adj1=mean(data.untrt$AME.sim.adj1[data.untrt$trt.time]), 
                       AME.adj2=mean(data.untrt$AME.sim.adj2[data.untrt$trt.time]))
   } else {
-    out <- data.frame(model="beta", effect=exp(tail(coef(Rt.fit), 1)), p=stata.out$p, 
+    out <- data.frame(model=paste0("Rt_", type), effect=exp(tail(coef(Rt.fit), 1)), p=stata.out$p, 
                       AME=mean(data.untrt$AME.raw[data.untrt$trt.time]), 
                       AME.adj1=mean(data.untrt$AME.raw.adj1[data.untrt$trt.time]), 
                       AME.adj2=mean(data.untrt$AME.raw.adj2[data.untrt$trt.time]))

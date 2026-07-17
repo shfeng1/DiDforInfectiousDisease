@@ -30,14 +30,13 @@ bias.df <- p_out %>%
   mutate(trans_prob.base1=as.character(trans_prob.base1), trans_prob.base2=as.character(trans_prob.base2)) %>%
   group_by(pop.size, trans_prob.base1, trans_prob.base2, eff.multi) %>%
   mutate(AME.true = Y.trt - Y.untrt.true,
-         AME.fit = Y.trt - Y.untrt,
-         AME.adj = Y.trt - Y.untrt.adj2,
          eff.true = ifelse(model=="inc", AME.true, eff.multi))
 ##############################################################################################################################
 bias.AME2 <- bias.df %>%
   group_by(pop.size, trans_prob.base1, trans_prob.base2, model, model.lab, eff.multi) %>%
-  summarise(nsim = n(), Y.trt = mean(Y.trt), Y.untrt = mean(Y.untrt), Y.untrt.true = mean(Y.untrt.true), 
-            AME.true = mean(AME.true), AME.fit = mean(AME.fit), AME.adj = mean(AME.adj, na.rm = T)) %>%
+  summarise(nsim = n(), Y.untrt.true = mean(Y.untrt.true),
+            Y.untrt.fit = mean(Y.trt-AME), Y.untrt.adj = mean(Y.trt-AME.adj2),
+            AME.true = mean(AME.true), AME.fit = mean(AME), AME.adj = mean(AME.adj2)) %>%
   mutate(bias.fit = abs(AME.fit - AME.true),
          bias.adj = ifelse(model %in% c("inc", "loginc"), bias.fit, AME.adj - AME.true),
          bias.adj = abs(bias.adj),
@@ -78,4 +77,3 @@ bias.AME.adj <- bias.AME2 %>% group_by(model) %>%
   arrange(match(model, c("inc", "loginc", "growth", "Rt_wt", "Rt_est", "beta")))
 
 power %>% cbind(bias.original$bias_original) %>% cbind(bias.AME$bias_AME) %>% cbind(bias.AME.adj$bias_AME_correct) %>% kable(format = "latex")
-

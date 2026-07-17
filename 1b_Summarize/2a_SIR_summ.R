@@ -35,16 +35,14 @@ bias.df <- p_out %>%
   data.frame() %>%
   mutate(trans_prob.base1=as.character(trans_prob.base1), trans_prob.base2=as.character(trans_prob.base2)) %>%
   group_by(pop.size, trans_prob.base1, trans_prob.base2, eff.multi) %>%
-  mutate(AME.true = Y.trt - Y.untrt.true,
-         AME.fit = AME,
-         AME.adj = AME.adj2,
+  mutate(AME.true = Y.trt - Y.untrt.true, AME.fit = AME, AME.adj = AME.adj2,
          eff.true = ifelse(model=="inc", AME.true, eff.multi))
 ##############################################################################################################################
 bias.AME1 <- bias.df %>%
   filter(trans_prob.base1 == trans_prob.base2) %>%
   group_by(pop.size, trans_prob.base1, trans_prob.base2, model, model.lab, eff.multi) %>%
-  summarise(nsim = n(), Y.untrt.true = mean(Y.untrt.true), 
-            AME.true = mean(AME.true), AME.fit = mean(AME.fit), AME.adj = mean(AME.adj, na.rm = T)) %>%
+  summarise(nsim = n(), Y.untrt.true = mean(Y.untrt.true), AME.true = mean(AME.true), 
+            AME.fit = mean(AME.fit), AME.adj = mean(AME.adj, na.rm = T)) %>%
   mutate(bias.fit = AME.fit - AME.true,
          bias.adj = ifelse(model %in% c("inc", "loginc"), bias.fit, AME.adj - AME.true),
          bias.fit.pct = bias.fit / Y.untrt.true,
@@ -53,8 +51,8 @@ bias.AME1 <- bias.df %>%
 bias.AME2 <- bias.df %>%
   filter(trans_prob.base1 > trans_prob.base2) %>%
   group_by(pop.size, trans_prob.base1, trans_prob.base2, model, model.lab, eff.multi) %>%
-  summarise(nsim = n(), Y.untrt.true = mean(Y.untrt.true), 
-            AME.true = mean(AME.true), AME.fit = mean(AME.fit), AME.adj = mean(AME.adj, na.rm = T)) %>%
+  summarise(nsim = n(), Y.untrt.true = mean(Y.untrt.true), AME.true = mean(AME.true), 
+            AME.fit = mean(AME.fit), AME.adj = mean(AME.adj, na.rm = T)) %>%
   mutate(bias.fit = AME.fit - AME.true,
          bias.adj = ifelse(model %in% c("inc", "loginc"), bias.fit, AME.adj - AME.true),
          bias.fit.pct = bias.fit / Y.untrt.true,

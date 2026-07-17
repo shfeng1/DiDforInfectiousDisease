@@ -3,7 +3,7 @@ here::i_am("1b_Summarize/3b_Misspecify_SEIR_to_SIR_summ.R")
 source("./global_options.R")
 source("./1a_Scripts/0_Format_Table.R")
 
-p_out <- readRDS("./4_Output/misspecify_SEIR_to_SIR_inf_days.rds") %>%
+p_out <- readRDS("./4_Output/misspecify_SEIR_to_SIR.rds") %>%
   mutate(model.lab = case_when(model=="inc" ~ "incidence", 
                                model=="loginc" ~ "log incidence",
                                model=="growth" ~ "log growth",
@@ -29,14 +29,13 @@ bias.df <- p_out %>%
   data.frame() %>%
   group_by(eff.multi) %>%
   mutate(AME.true = Y.trt - Y.untrt.true,
-         AME.fit = Y.trt - Y.untrt,
-         AME.adj = Y.trt - Y.untrt.adj2,
          eff.true = ifelse(model=="inc", AME.true, eff.multi))
 ##############################################################################################################################
 bias.AME2 <- bias.df %>%
   group_by(model, model.lab, eff.multi) %>%
-  summarise(nsim = n(), Y.trt = mean(Y.trt), Y.untrt.fit = mean(Y.untrt), Y.untrt.true = mean(Y.untrt.true), 
-            AME.true = mean(AME.true), AME.fit = mean(AME.fit), AME.adj = mean(AME.adj, na.rm = T)) %>%
+  summarise(nsim = n(), Y.untrt.true = mean(Y.untrt.true), 
+            Y.untrt.fit = mean(Y.trt-AME), Y.untrt.adj = mean(Y.trt-AME.adj2),
+            AME.true = mean(AME.true), AME.fit = mean(AME), AME.adj = mean(AME.adj2)) %>%
   mutate(bias.fit = AME.fit - AME.true,
          bias.adj = ifelse(model %in% c("inc", "loginc"), bias.fit, AME.adj - AME.true),
          bias.fit.pct = bias.fit / Y.untrt.true,

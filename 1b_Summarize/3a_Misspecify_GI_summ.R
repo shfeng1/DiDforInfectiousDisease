@@ -26,8 +26,8 @@ power.df.var <- p_out %>%
 bias.AME.mean <- p_out %>% # keep variance at true value, vary mean
   filter(var_spe==1) %>%
   group_by(model, eff.multi, mean_spe) %>%
-  summarise(nsim = n(), Y.trt = mean(Y.trt), Y.untrt.true = mean(Y.untrt.true),
-            Y.untrt.fit = mean(Y.untrt), Y.untrt.adj = mean(Y.untrt.adj2)) %>%
+  summarise(nsim = n(), Y.untrt.fit = mean(Y.trt-AME), Y.untrt.adj = mean(Y.trt-AME.adj2),
+            Y.trt = mean(Y.trt), Y.untrt.true = mean(Y.untrt.true)) %>%
   mutate(bias.fit = Y.untrt.fit - Y.untrt.true,
          bias.adj = Y.untrt.adj - Y.untrt.true,
          bias.adj.pct = bias.adj / Y.untrt.true)
@@ -35,8 +35,8 @@ bias.AME.mean <- p_out %>% # keep variance at true value, vary mean
 bias.AME.var <- p_out %>% # keep mean at true value, vary variance
   filter(mean_spe==1) %>%
   group_by(model, eff.multi, var_spe) %>%
-  summarise(nsim = n(), Y.trt = mean(Y.trt), Y.untrt.true = mean(Y.untrt.true),
-            Y.untrt.fit = mean(Y.untrt), Y.untrt.adj = mean(Y.untrt.adj2)) %>%
+  summarise(nsim = n(), Y.untrt.fit = mean(Y.trt-AME), Y.untrt.adj = mean(Y.trt-AME.adj2),
+            Y.trt = mean(Y.trt), Y.untrt.true = mean(Y.untrt.true)) %>%
   mutate(bias.fit = Y.untrt.fit - Y.untrt.true,
          bias.adj = Y.untrt.adj - Y.untrt.true,
          bias.adj.pct = bias.adj / Y.untrt.true)
