@@ -28,45 +28,104 @@ compute_infected <- function(delta, ID, inc, time, Ttot) {
   return(infected_est)
 }
 
-# Estimate cohort-based Rt according to Wallinga Teunis
-compute_Rt_wt <- function(inf_mean, ID, inc, agg=7) {
-  keep_wt <- list()
-  for(i in unique(ID)){
-    vec <- inc[ID==i]
-    temp_wt <- EpiEstim::wallinga_teunis(vec, method="parametric_si",
-                               config=list(
-                                 t_start=2:((T0+T1+burnin*3)/agg-1),
-                                 t_end=3:((T0+T1+burnin*3)/agg),
-                                 method="parametric_si", 
-                                 mean_si=inf_mean/agg, std_si=inf_mean/agg,
-                                 n_sim=0))$R %>%
-      mutate(week=t_end, unit=i, type="processed", R_wt=`Mean(R)`)
-    keep_wt <- rbindlist(list(keep_wt, temp_wt))
+# Estimate cohort-based Rt according to Wallinga-Teunis.
+compute_Rt_wt <- function(inf_mean, ID, inc, agg = 7, incubation_mean = 0) {
+  # Under the SEIR DGP, transmission generations include both the latent and
+  # infectious intervals.
+  serial_interval_mean <- inf_mean + incubation_mean
+  n_periods <- (T0 + T1 + burnin * 3) / agg
+
+  if (length(n_periods) != 1L || !is.finite(n_periods) || n_periods < 3 ||
+      abs(n_periods - round(n_periods)) > sqrt(.Machine$double.eps)) {
+    stop("The Wallinga-Teunis analysis period must contain an integer number of at least three aggregation periods.")
   }
-  return(keep_wt %>% dplyr::select(unit, week, R_wt))
+
+  n_periods <- as.integer(round(n_periods))
+  t_start <- 2:(n_periods - 1L)
+  t_end <- 3:n_periods
+  units <- unique(ID)
+  keep_wt <- vector("list", length(units))
+
+  for (k in seq_along(units)) {
+    i <- units[k]
+    vec <- as.numeric(inc[ID == i])
+    missing_result <- data.table(unit = i, week = t_end, R_wt = NA_real_)
+
+    # Rt is undefined for a unit with no usable incidence.  This is a
+    # unit-level estimator limitation, not extinction of the entire simulated
+    # dataset; retain the replicate and return NA only for this unit's W-T Rt.
+    if (length(vec) < n_periods || any(!is.finite(vec)) || any(vec < 0) ||
+        sum(vec, na.rm = TRUE) <= 0) {
+      keep_wt[[k]] <- missing_result
+      next
+    }
+
+    sparse_or_terminally_extinct <-
+      sum(vec > 0, na.rm = TRUE) < 2L ||
+      !any(is.finite(tail(vec, 2L)) & tail(vec, 2L) > 0)
+
+    temp_wt <- tryCatch(
+      EpiEstim::wallinga_teunis(
+        vec,
+        method = "parametric_si",
+        config = list(
+          t_start = t_start,
+          t_end = t_end,
+          method = "parametric_si",
+          mean_si = serial_interval_mean / agg,
+          std_si = serial_interval_mean / agg,
+          n_sim = 0
+        )
+      )$R,
+      error = function(e) {
+        # EpiEstim can emit this non-specific base-R error when a sparse or
+        # terminally extinct unit does not support W-T estimation.  Handle only
+        # that understood unit-level case; every other error remains fatal.
+        if (sparse_or_terminally_extinct &&
+            identical(conditionMessage(e), "missing value where TRUE/FALSE needed")) {
+          return(NULL)
+        }
+        stop(e)
+      }
+    )
+
+    if (is.null(temp_wt)) {
+      keep_wt[[k]] <- missing_result
+    } else {
+      keep_wt[[k]] <- temp_wt %>%
+        mutate(week = t_end, unit = i, type = "processed", R_wt = `Mean(R)`) %>%
+        dplyr::select(unit, week, R_wt)
+    }
+  }
+
+  rbindlist(keep_wt, use.names = TRUE, fill = TRUE)
 }
 
 # Estimate the true value for cohort-based Rt
 compute_Rt_cohort <- function(incidence, ID, inf_mean, Ttot) {
   w <- (1 - 1/inf_mean)^(1:Ttot)
-  w <- w / sum(w)  # normalize
-  Rt_cohort <- rep(NA, length(incidence))
-  
+  w <- w / sum(w)
+  Rt_cohort <- rep(NA_real_, length(incidence))
+
   for (i in unique(ID)) {
-    for (t in 1:(Ttot - 1)) {
-      future_cases <- incidence[ID==i][(t + 1):Ttot]
-      current_case <- incidence[ID==i][t]
-      weights <- w[1:length(future_cases)]
-      
-      if (current_case == 0) {
-        Rt_cohort[ID==i][t] <- NA
+    idx <- which(ID == i)
+    n_i <- length(idx)
+    if (n_i < 2L) next
+
+    for (t in seq_len(n_i - 1L)) {
+      current_case <- incidence[idx[t]]
+      future_cases <- incidence[idx[(t + 1L):n_i]]
+      weights <- w[seq_along(future_cases)]
+
+      if (length(current_case) != 1L || !is.finite(current_case) || current_case <= 0) {
+        Rt_cohort[idx[t]] <- NA_real_
       } else {
-        Rt_cohort[ID==i][t] <- sum(future_cases * weights) / current_case
+        Rt_cohort[idx[t]] <- sum(future_cases * weights, na.rm = TRUE) / current_case
       }
     }
   }
 
-  return(Rt_cohort)
+  Rt_cohort
 }
 
 # simulation error handler
@@ -120,7 +179,8 @@ gen_SEIR <- function(trans_prob.base1, trans_prob.base2, eff.multi1, inf_mean) {
 }
 
 # dgp is either "SIR" or "SEIR"
-process_data <- function(out.df, inf_mean, agg=7, dgp="SIR", discard_start=burnin, discard_end=burnin*2) {
+process_data <- function(out.df, inf_mean, agg=7, dgp="SIR", incubation_mean=0,
+                         discard_start=burnin, discard_end=burnin*2) {
   df.agg <- out.df %>% 
     group_by(unit) %>%
     arrange(t) %>%
@@ -146,25 +206,72 @@ process_data <- function(out.df, inf_mean, agg=7, dgp="SIR", discard_start=burni
            trt.time = (week > (T0+burnin)/agg),
            trt_post = (trt.unit & trt.time))
   
-  wt.df <- compute_Rt_wt(inf_mean=inf_mean, ID=df.agg$unit, inc=df.agg$inc)
-  data.clean <- df.agg %>% left_join(wt.df, c("unit"="unit", "week"="week")) %>%
+  # Classify only replicate-level extinction.  A single unit with no cases
+  # must not discard the entire simulation; unit-level W-T non-estimability is
+  # handled inside compute_Rt_wt() by returning NA for that unit.
+  analysis.window <- df.agg %>%
+    ungroup() %>%
+    mutate(analysis_week = week - discard_start / agg)
+
+  last.analysis.week <- max(analysis.window$analysis_week, na.rm = TRUE) -
+    discard_end / agg
+
+  analysis.window <- analysis.window %>%
+    filter(analysis_week > 0, analysis_week <= last.analysis.week)
+
+  if (nrow(analysis.window) == 0L) {
+    sim_error(
+      "epidemic_extinct",
+      "No retained analysis weeks were available after burn-in removal."
+    )
+  }
+
+  activity.by.group <- analysis.window %>%
+    mutate(simulation_group = ifelse(trt.unit, "treated", "comparison")) %>%
+    group_by(simulation_group) %>%
+    summarise(
+      active = any(is.finite(inc) & inc > 0),
+      .groups = "drop"
+    )
+
+  inactive.groups <- activity.by.group$simulation_group[!activity.by.group$active]
+  if (length(inactive.groups) > 0L) {
+    sim_error(
+      "epidemic_extinct",
+      paste0(
+        "No usable incidence was generated in the retained analysis period for group(s): ",
+        paste(inactive.groups, collapse = ", ")
+      )
+    )
+  }
+
+  # NECESSARY CHANGE [E16-CALL]: receive the incubation mean explicitly.
+  # R uses lexical (not caller/dynamic) scoping, so looking for `delta` inside
+  # this helper can silently pick up an unrelated global value instead of the
+  # SEIR parameter supplied to the simulation wrapper.
+  wt.incubation <- if (dgp == "SEIR") incubation_mean else 0
+  if (dgp == "SEIR" &&
+      (length(wt.incubation) != 1 || is.na(wt.incubation) ||
+       !is.finite(wt.incubation) || wt.incubation <= 0)) {
+    stop("SEIR Wallinga-Teunis estimation requires a positive incubation_mean.")
+  }
+
+  wt.df <- compute_Rt_wt(
+    inf_mean = inf_mean,
+    ID = df.agg$unit,
+    inc = df.agg$inc,
+    agg = agg,
+    incubation_mean = wt.incubation
+  )
+  data.clean <- df.agg %>% left_join(wt.df, c("unit" = "unit", "week" = "week")) %>%
     mutate(R_wt = R_wt / inf_mean, beta_wt = R_wt / S_frac)
-  
+
   # chop off burnin in the beginning and 2*burnin periods in the end
   df <- data.clean %>% data.frame() %>%
     mutate(unit = relevel(factor(unit), ref = max(data.clean$unit)),
            week = week - discard_start/agg) %>%
-    filter(week > 0, 
+    filter(week > 0,
            week <= max(week) - discard_end/agg)
-  
-  # Classify the known extinction case.
-  # This check occurs before compute_Rt_wt(), which may fail when incidence goes to zero
-  if (!any(tail(df$inc, 2) > 0)) {
-    sim_error(
-      "epidemic_extinct",
-      "The epidemic became extinct before producing usable incidence."
-    )
-  }
   
   return(df)
 }

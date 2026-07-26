@@ -17,8 +17,17 @@ run_SIR_varying <- function(
     trans_prob,      # vector of beta_t, length >= time_steps + 1
 
     inf_mean,        # mean infectious period (required)
-    inf_var  = NULL  # variance (optional; if NULL ⇒ geometric)
+    inf_var  = NULL, # variance (optional; if NULL ⇒ geometric)
+    stochastic = TRUE, # FALSE uses conditional-mean transitions
+    uniforms = NULL     # optional shared U(0,1) draws for paired Monte Carlo
 ) {
+  if (!is.null(uniforms)) {
+    if (length(uniforms) < time_steps || anyNA(uniforms) ||
+        any(!is.finite(uniforms)) || any(uniforms <= 0) || any(uniforms >= 1)) {
+      stop("uniforms must contain at least time_steps finite values strictly between 0 and 1.")
+    }
+  }
+
   # fix simulation by one extra time step
   Ttot <- time_steps + 1
   trans_prob <- c(NA, trans_prob)
@@ -49,7 +58,13 @@ run_SIR_varying <- function(
     
     # draw new infections
     lambda_t <- beta_t * I[t-1] * (S[t-1] / pop.size)
-    trans_t  <- rpois(1, lambda_t)
+    trans_t <- if (!stochastic) {
+      lambda_t
+    } else if (is.null(uniforms)) {
+      rpois(1, lambda_t)
+    } else {
+      qpois(uniforms[t-1], lambda_t)
+    }
     
     # update susceptibles and incidence
     S[t]   <- S[t-1] - trans_t
@@ -91,7 +106,8 @@ run_SIR_varying <- function(
 #### 4) Pull point estimates + calculate AME
 #### 5) Bias correction
 SIR_sim <- function(pop.size, N, N1, T0, T1, burnin, seed1, seed2, inf_mean,
-                    trans_prob.base1, trans_prob.base2, eff.multi1, parallel.id=0) {
+                    trans_prob.base1, trans_prob.base2, eff.multi1, parallel.id=0,
+                    smearing=FALSE, smearing_reps=500L, smearing_method="local") {
   parallel.id <- paste0("SIR", parallel.id)
   out.df <- gen_SIR(trans_prob.base1, trans_prob.base2, eff.multi1, inf_mean) # simulate data according SIR
   data.in <- process_data(out.df, inf_mean, agg, dgp="SIR") # estimate R_t, beta_t, aggregate to weekly level
@@ -99,9 +115,15 @@ SIR_sim <- function(pop.size, N, N1, T0, T1, burnin, seed1, seed2, inf_mean,
   inc.out <- run_inc(data.in, parallel.id)
   loginc.out <- run_loginc(data.in, parallel.id)
   growth.out <- run_growth(data.in, parallel.id)
-  Rt_wt.out <- run_Rt(data.in, out.df, type="wt", dgp="SIR", inf_mean=inf_mean, parallel.id=parallel.id)
-  Rt_est.out <- run_Rt(data.in, out.df, type="est", dgp="SIR", inf_mean=inf_mean, parallel.id=parallel.id)
-  beta.out <- run_beta(data.in, out.df, dgp="SIR", inf_mean=inf_mean, parallel.id=parallel.id)
+  Rt_wt.out <- run_Rt(data.in, out.df, type="wt", dgp="SIR", inf_mean=inf_mean, parallel.id=parallel.id,
+                       smearing=smearing, smearing_reps=smearing_reps,
+                       smearing_method=smearing_method)
+  Rt_est.out <- run_Rt(data.in, out.df, type="est", dgp="SIR", inf_mean=inf_mean, parallel.id=parallel.id,
+                        smearing=smearing, smearing_reps=smearing_reps,
+                       smearing_method=smearing_method)
+  beta.out <- run_beta(data.in, out.df, dgp="SIR", inf_mean=inf_mean, parallel.id=parallel.id,
+                       smearing=smearing, smearing_reps=smearing_reps,
+                       smearing_method=smearing_method)
   Y.untrt.true <- run_true(out.df, trans_prob.base1, dgp="SIR")
   ############################################################################################################################
   # summarize outputs
@@ -109,7 +131,7 @@ SIR_sim <- function(pop.size, N, N1, T0, T1, burnin, seed1, seed2, inf_mean,
     mutate(N=N, N1=N1, trans_prob.base1=trans_prob.base1, trans_prob.base2=trans_prob.base2, pop.size=pop.size, seed=seed1,
            eff.multi=eff.multi1, burnin=burnin, T0=T0, T1=T1, 
            S_frac.mean=mean(data.in$S_frac[data.in$trt.time]), S_frac.min=min(data.in$S_frac),
-           Y.trt=mean(data.in$inc[data.in$trt_post]), Y.untrt.true=Y.untrt.true)
+           Y.trt=Y.obs, Y.untrt.true=Y.untrt.true)
   # true AME * T1 / pop.size is the effect size as % population
   
   return(out)

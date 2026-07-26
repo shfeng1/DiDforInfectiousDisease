@@ -24,7 +24,11 @@ df.model$prevalence <- compute_prevalence(inf_mean=inf_days, ID=df.model$ncounty
                                           time=df.model$time, Ttot=max(df.model$time))
 df.model$infected_est <- compute_infected(delta=delta, ID=df.model$ncounty, inc=df.model$infections, 
                                           time=df.model$time, Ttot=max(df.model$time)-1)
-df.model$I_est <- compute_prevalence(inf_mean=inf_days, ID=df.model$ncounty, inc=df.model$E_lag / delta, 
+# NECESSARY CHANGE [E14-1]: Eq. 11's exposure-based denominator convolves
+# lagged exposure incidence directly.  Dividing the exposure flow by delta here
+# and later multiplying the weekly estimator by agg/delta double-transformed the
+# quantity and did not implement the manuscript's derived exposure estimator.
+df.model$I_est <- compute_prevalence(inf_mean=inf_days, ID=df.model$ncounty, inc=df.model$E_lag,
                                      time=df.model$time, Ttot=max(df.model$time))
 saveRDS(df.model, "./0_Data/Kansas.rds")
 ################################################################################################################################
@@ -38,14 +42,25 @@ df.clean <- df.model %>%
          I_est_lag = lag(I_est, 1),
          ncounty = as.numeric(haven::as_factor(ncounty))) %>%
   group_by(ncounty, week) %>%
-  summarise(start_date = min(date), dayssincefirstcase = min(dayssincefirstcase),
-            sus_frac = mean(sus_frac), coestpop2019 = mean(coestpop2019),
-            stnnewcases7davg = mean(stnnewcases7davg), growth = mean(growth),
-            Rt = mean(Rt), infections = mean(infections), E_lag = mean(E_lag),
-            infected_est = mean(infected_est, na.rm = T),
-            prevalence_lag = mean(prevalence_lag, na.rm = T),
-            Rt_est = sum(infected_est) / sum(prevalence_lag),
-            Rt_exposure = sum(infections) / sum(I_est_lag)) %>%
+  summarise(
+    start_date = min(date), dayssincefirstcase = min(dayssincefirstcase),
+    sus_frac = mean(sus_frac), coestpop2019 = mean(coestpop2019),
+    stnnewcases7davg = mean(stnnewcases7davg), growth = mean(growth),
+    Rt = mean(Rt),
+
+    # NECESSARY CHANGE [E14-2]: calculate the ratio estimators BEFORE creating
+    # weekly summary columns with the same names.  In dplyr::summarise(), later
+    # expressions can reference variables created earlier in the same call.  The
+    # old ordering therefore used mean(infections) in the numerator but the
+    # daily sum of I_est_lag in the denominator, shrinking Rt_exposure by 1/7.
+    Rt_est = sum(infected_est) / sum(prevalence_lag),
+    Rt_exposure = sum(infections) / sum(I_est_lag),
+
+    # Preserve the weekly mean daily quantities used for the Kansas AME outcome.
+    infections = mean(infections), E_lag = mean(E_lag),
+    infected_est = mean(infected_est, na.rm = T),
+    prevalence_lag = mean(prevalence_lag, na.rm = T)
+  ) %>%
   dplyr::select(ncounty, week, start_date, dayssincefirstcase, coestpop2019, sus_frac, stnnewcases7davg, 
                 infections, growth, infected_est, prevalence_lag, E_lag, Rt, Rt_est, Rt_exposure) %>%
   ungroup() %>%

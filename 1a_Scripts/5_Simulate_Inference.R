@@ -14,7 +14,7 @@ for (j in 1:nrow(sim.param)) {
   set.seed(j, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
   out <- foreach(s = 1:nsim,
                  .combine = "rbind",
-                 .errorhandling = "remove") %dopar%
+                 .errorhandling = "stop") %dopar%
     {
       tryCatch(
         inference_sim(pop.size=pop.size, N=N, N1=N1, seed1=seed1, seed2=seed2,
@@ -25,28 +25,12 @@ for (j in 1:nrow(sim.param)) {
         
         # Allow epidemic extinction to pass
         epidemic_extinct = function(e) NULL,
-        
-        # Allow the known writer error
-        error = function(e) {
-          msg <- conditionMessage(e)
-          
-          allowed_write_error <-
-            grepl("unable to open file for writing", msg, fixed = TRUE) &&
-            (
-              grepl("Stale NFS file handle", msg, fixed = TRUE) ||
-                grepl("Operation timed out", msg, fixed = TRUE)
-            )
-          
-          if (allowed_write_error) {
-            return(NULL)
-          }
-          
-          # Any other error stops the parallel batch.
-          stop(e)
-        })
+        error = function(e) handle_simulation_error(e, j, s))
     }
   sim.out <- rbind(sim.out, out)
 }
 
-saveRDS(sim.out, "./4_Output/SIR_N1=5.rds")
-# saveRDS(rbind(readRDS("./4_Output/SIR_N1=5.rds"), sim.out), "./4_Output/SIR_N1=5.rds")
+if (nrow(sim.out) == 0L) stop("No inference simulations completed successfully.")
+output.file <- "./4_Output/SIR_N1=5.rds"
+dir.create(dirname(output.file), recursive=TRUE, showWarnings=FALSE)
+saveRDS(sim.out, output.file)

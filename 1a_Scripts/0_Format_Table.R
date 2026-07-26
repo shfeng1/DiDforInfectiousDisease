@@ -14,9 +14,9 @@ format.tbl <- function(power.df, bias.original.df, bias.AME.df) {
     arrange(match(model, c("inc", "loginc", "growth", "Rt_wt", "Rt_est", "beta")))
   bias.AME <- bias.AME.df %>% group_by(model) %>% 
     filter(model != "true") %>%
-    summarise(mean = format(round(mean(abs(bias.adj)), 1), nsmall=1), 
-              min = format(round(min(bias.adj), 1), nsmall=1), 
-              max = format(round(max(bias.adj), 1), nsmall=1)) %>%
+    summarise(mean = format(round(mean(abs(bias.adj2)), 1), nsmall=1), 
+              min = format(round(min(bias.adj2), 1), nsmall=1), 
+              max = format(round(max(bias.adj2), 1), nsmall=1)) %>%
     mutate(bias_AME = paste0(mean, " (", min, ", ", max, ")")) %>%
     arrange(match(model, c("inc", "loginc", "growth", "Rt_wt", "Rt_est", "beta")))
   

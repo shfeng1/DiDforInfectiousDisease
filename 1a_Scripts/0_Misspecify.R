@@ -75,7 +75,10 @@ sim_misspecify_GI <- function(mean_true, var_true, eff.multi1, mean_spe, var_spe
   }
   keep <- keep_wt %>% dplyr::select(unit, week, R_wt)
   df <- df.agg %>% left_join(keep, c("unit"="unit", "week"="week")) %>%
-    mutate(R_wt = R_wt / (inf_mean * mean_spe), beta_wt = R_wt / S_frac)
+    # NECESSARY CHANGE [MISS-1]: use the function's explicitly calculated
+    # misspecified mean.  The prior expression referenced a global inf_mean,
+    # which can fail or silently disagree with mean_true supplied by the caller.
+    mutate(R_wt = R_wt / inf_mean_spe, beta_wt = R_wt / S_frac)
   
   # chop off burnin in the beginning and 2*burnin periods in the end
   data.in <- df %>% data.frame() %>%
@@ -84,16 +87,18 @@ sim_misspecify_GI <- function(mean_true, var_true, eff.multi1, mean_spe, var_spe
     filter(week > 0, week <= max(week) - burnin*2/agg)
   ############################################################################################################################
   # Fit regression models
-  Rt_wt.out <- run_Rt(data.in, out.df, type="wt", dgp="SIR", inf_mean_spe, inf_var_spe, parallel.id=parallel.id)
-  Rt_est.out <- run_Rt(data.in, out.df, type="est", dgp="SIR", inf_mean_spe, inf_var_spe, parallel.id=parallel.id)
-  beta.out <- run_beta(data.in, out.df, dgp="SIR", inf_mean_spe, inf_var_spe, parallel.id=parallel.id)
+  Rt_wt.out <- run_Rt(data.in, out.df, type="wt", dgp="SIR", inf_mean=inf_mean_spe, inf_var=inf_var_spe, parallel.id=parallel.id)
+  Rt_est.out <- run_Rt(data.in, out.df, type="est", dgp="SIR", inf_mean=inf_mean_spe, inf_var=inf_var_spe, parallel.id=parallel.id)
+  beta.out <- run_beta(data.in, out.df, dgp="SIR", inf_mean=inf_mean_spe, inf_var=inf_var_spe, parallel.id=parallel.id)
   Y.untrt.true <- run_true(out.df, trans_prob.base1, dgp="SIR")
   ################################################################################################################
   # summarize outputs
   out <- rbind(Rt_wt.out, Rt_est.out, beta.out) %>% 
     mutate(eff.multi=eff.multi1, seed=seed1, mean_spe=mean_spe, var_spe=var_spe, 
-           inf_mean=inf_mean, S_frac.mean=mean(data.in$S_frac[data.in$trt.time]), S_frac.min=min(data.in$S_frac),
-           Y.trt=mean(data.in$inc[data.in$trt_post]), Y.untrt.true=Y.untrt.true)
+           # NECESSARY CHANGE [MISS-2]: report the actual true mean passed to
+           # this function rather than an unrelated global inf_mean.
+           inf_mean=mean_true, S_frac.mean=mean(data.in$S_frac[data.in$trt.time]), S_frac.min=min(data.in$S_frac),
+           Y.trt=Y.obs, Y.untrt.true=Y.untrt.true)
   out
 }
 
@@ -112,6 +117,6 @@ sim_misspecify_SEIR <- function(eff.multi1, parallel.id=0) {
     mutate(dgp_true="SEIR", dgp_spe="SIR", N=N, N1=N1, trans_prob.base1=trans_prob.base1, trans_prob.base2=trans_prob.base2, 
            pop.size=pop.size, seed=seed1, eff.multi=eff.multi1, burnin=burnin, T0=T0, T1=T1, 
            S_frac.mean=mean(data.in$S_frac[data.in$trt.time]), S_frac.min=min(data.in$S_frac),
-           Y.trt=mean(data.in$inc[data.in$trt_post]), Y.untrt.true=Y.untrt.true)
+           Y.trt=Y.obs, Y.untrt.true=Y.untrt.true)
   out
 }

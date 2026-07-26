@@ -5,6 +5,15 @@
 source("./1a_Scripts/0_Estimate_Rt.R")
 source("./1a_Scripts/0_Run_Estimators.R")
 
+# Fail immediately if an older 0_Estimate_Rt.R was sourced.  The SEIR wrappers
+# require the E16-compatible process_data() interface.
+if (!("incubation_mean" %in% names(formals(process_data)))) {
+  stop(
+    "Incompatible 0_Estimate_Rt.R: process_data() must include incubation_mean. ",
+    "Replace it with the version supplied in this repository and restart the parallel cluster."
+  )
+}
+
 #### FUNCTION #1 ####
 #### Define SEIR data-generating process
 run_SEIR_varying = function(
@@ -16,8 +25,17 @@ run_SEIR_varying = function(
     death_prob = 0.01, # probability of deaths
     trans_prob, # a vector probability of transmission given contact
     inf_mean, # average days of infectiousness
-    delta # average days of incubation period
+    delta, # average days of incubation period
+    stochastic = TRUE, # FALSE uses conditional-mean transitions
+    uniforms = NULL     # optional shared U(0,1) draws for paired Monte Carlo
 ){
+  if (!is.null(uniforms)) {
+    if (length(uniforms) < time_steps || anyNA(uniforms) ||
+        any(!is.finite(uniforms)) || any(uniforms <= 0) || any(uniforms >= 1)) {
+      stop("uniforms must contain at least time_steps finite values strictly between 0 and 1.")
+    }
+  }
+
   time_steps <- time_steps + 1
   trans_prob <- c(NA, trans_prob)
   
@@ -44,7 +62,13 @@ run_SEIR_varying = function(
     
     # set up random draw
     mean[i] = beta*I[i-1]*S[i-1]/pop.size
-    trans_t = rpois(1, lambda = mean[i])
+    trans_t = if (!stochastic) {
+      mean[i]
+    } else if (is.null(uniforms)) {
+      rpois(1, lambda = mean[i])
+    } else {
+      qpois(uniforms[i-1], lambda = mean[i])
+    }
     
     # susceptible
     S[i] = S[i-1] - trans_t
@@ -77,17 +101,27 @@ run_SEIR_varying = function(
 #### 4) Pull point estimates + calculate AME
 #### 5) Bias correction
 SEIR_sim <- function(pop.size, N, N1, T0, T1, burnin, seed1, seed2, inf_mean, delta,
-                     trans_prob.base1, trans_prob.base2, eff.multi1,  parallel.id=0) {
+                     trans_prob.base1, trans_prob.base2, eff.multi1, parallel.id=0,
+                     smearing=FALSE, smearing_reps=500L, smearing_method="local") {
   parallel.id <- paste0("SEIR", parallel.id)
   out.df <- gen_SEIR(trans_prob.base1, trans_prob.base2, eff.multi1, inf_mean)
-  data.in <- process_data(out.df, inf_mean, agg, dgp="SEIR")
+  # NECESSARY CHANGE [E16-CALL]: pass the SEIR incubation mean explicitly so
+  # Wallinga-Teunis uses the full serial interval rather than an unrelated
+  # global value or the infectious interval alone.
+  data.in <- process_data(out.df, inf_mean, agg, dgp="SEIR", incubation_mean=delta)
   ################################################################################################################################
   inc.out <- run_inc(data.in, parallel.id)
   loginc.out <- run_loginc(data.in, parallel.id)
   growth.out <- run_growth(data.in, parallel.id)
-  Rt_wt.out <- run_Rt(data.in, out.df, type="wt", dgp="SEIR", inf_mean=inf_mean, delta=delta, parallel.id=parallel.id)
-  Rt_est.out <- run_Rt(data.in, out.df, type="est", dgp="SEIR", inf_mean=inf_mean, delta=delta, parallel.id=parallel.id)
-  beta.out <- run_beta(data.in, out.df, dgp="SEIR", inf_mean=inf_mean, delta=delta, parallel.id=parallel.id)
+  Rt_wt.out <- run_Rt(data.in, out.df, type="wt", dgp="SEIR", inf_mean=inf_mean, delta=delta,
+                       parallel.id=parallel.id, smearing=smearing, smearing_reps=smearing_reps,
+                       smearing_method=smearing_method)
+  Rt_est.out <- run_Rt(data.in, out.df, type="est", dgp="SEIR", inf_mean=inf_mean, delta=delta,
+                        parallel.id=parallel.id, smearing=smearing, smearing_reps=smearing_reps,
+                       smearing_method=smearing_method)
+  beta.out <- run_beta(data.in, out.df, dgp="SEIR", inf_mean=inf_mean, delta=delta,
+                       parallel.id=parallel.id, smearing=smearing, smearing_reps=smearing_reps,
+                       smearing_method=smearing_method)
   Y.untrt.true <- run_true(out.df, trans_prob.base1, dgp="SEIR")
   ############################################################################################################################
   # summarize outputs
@@ -95,7 +129,7 @@ SEIR_sim <- function(pop.size, N, N1, T0, T1, burnin, seed1, seed2, inf_mean, de
     mutate(N=N, N1=N1, trans_prob.base1=trans_prob.base1, trans_prob.base2=trans_prob.base2, pop.size=pop.size, seed=seed1,
            eff.multi=eff.multi1, burnin=burnin, T0=T0, T1=T1, 
            S_frac.mean=mean(data.in$S_frac[data.in$trt.time]), S_frac.min=min(data.in$S_frac),
-           Y.trt=mean(data.in$inc[data.in$trt_post]), Y.untrt.true=Y.untrt.true)
+           Y.trt=Y.obs, Y.untrt.true=Y.untrt.true)
   return(out)
 }
 
@@ -104,8 +138,27 @@ SEIR_sim <- function(pop.size, N, N1, T0, T1, burnin, seed1, seed2, inf_mean, de
 #### 2) Simulate untreated potential outcomes according to SEIR
 #### 3) Calculate what the true RR would be
 SEIR_true_eff <- function(trans_prob.base1, trans_prob.base2, eff.multi1) {
+  assert_scalar_parameter <- function(x, name, positive = TRUE) {
+    if (!is.numeric(x) || length(x) != 1L || is.na(x) || !is.finite(x) ||
+        (positive && x <= 0)) {
+      stop(
+        name, " must be one finite numeric scalar",
+        if (positive) " greater than zero" else "",
+        "; received length ", length(x), "."
+      )
+    }
+    invisible(x)
+  }
+
+  assert_scalar_parameter(trans_prob.base1, "trans_prob.base1")
+  assert_scalar_parameter(trans_prob.base2, "trans_prob.base2")
+  assert_scalar_parameter(eff.multi1, "eff.multi1")
+
   out.df <- gen_SEIR(trans_prob.base1, trans_prob.base2, eff.multi1, inf_mean)
-  data.in <- process_data(out.df, inf_mean, agg, dgp="SEIR")
+  # NECESSARY CHANGE [E16-CALL]: pass the SEIR incubation mean explicitly so
+  # Wallinga-Teunis uses the full serial interval rather than an unrelated
+  # global value or the infectious interval alone.
+  data.in <- process_data(out.df, inf_mean, agg, dgp="SEIR", incubation_mean=delta)
   
   # Construct the untreated counterfactual
   untrt.df <- lapply(1:N1, function(ind) { 
@@ -115,17 +168,57 @@ SEIR_true_eff <- function(trans_prob.base1, trans_prob.base2, eff.multi1) {
            prevalence = compute_prevalence(inf_mean=inf_mean, ID=unit, inc=inc, time=t, Ttot=T0+T1+burnin),
            infected_est = compute_infected(delta=delta, ID=unit, inc=inc, time=t, Ttot=T0+T1+burnin),
            R_cohort = compute_Rt_cohort(inc, unit, inf_mean, (T0+T1+burnin*3)))
-  untrt.data.in <- process_data(untrt.df, inf_mean, agg, dgp="SEIR")
+  untrt.data.in <- process_data(untrt.df, inf_mean, agg, dgp="SEIR",
+                                  incubation_mean=delta)
   ################################################################################################################################
-  out <- data.frame(trans_prob.base1=trans_prob.base1, trans_prob.base2=trans_prob.base2,
-                    eff.multi = eff.multi1, model = c("inc", "loginc", "growth", "Rt_wt", "Rt_cohort", "Rt_est", "Rt_true", "beta"),
-                    eff.true = c(mean(data.in$inc[data.in$trt_post])-mean(untrt.data.in$inc[untrt.data.in$trt_post]),
-                                 mean(data.in$inc[data.in$trt_post])/mean(untrt.data.in$inc[untrt.data.in$trt_post]),
-                                 mean(data.in$growth[data.in$trt_post])/mean(untrt.data.in$growth[untrt.data.in$trt_post]),
-                                 mean(data.in$R_wt[data.in$trt_post]) / mean(untrt.data.in$R_wt[untrt.data.in$trt_post]),
-                                 mean(data.in$R_cohort[data.in$trt_post]) / mean(untrt.data.in$R_cohort[untrt.data.in$trt_post]),
-                                 mean(data.in$R_est[data.in$trt_post]) / mean(untrt.data.in$R_est[untrt.data.in$trt_post]),
-                                 mean(data.in$R_true[data.in$trt_post]) / mean(untrt.data.in$R_true[untrt.data.in$trt_post]),
-                                 eff.multi1))
+  finite_mean <- function(x) {
+    x <- x[is.finite(x)]
+    if (length(x) == 0L) NA_real_ else mean(x)
+  }
+  finite_ratio <- function(numerator, denominator) {
+    numerator <- finite_mean(numerator)
+    denominator <- finite_mean(denominator)
+    if (!is.finite(numerator) || !is.finite(denominator) || denominator == 0) {
+      NA_real_
+    } else {
+      numerator / denominator
+    }
+  }
+
+  trt.idx <- data.in$trt_post
+  untrt.idx <- untrt.data.in$trt_post
+  inc.trt <- finite_mean(data.in$inc[trt.idx])
+  inc.untrt <- finite_mean(untrt.data.in$inc[untrt.idx])
+
+  model.names <- c(
+    "inc", "loginc", "growth", "Rt_wt",
+    "Rt_cohort", "Rt_est", "Rt_true", "beta"
+  )
+  true.effects <- c(
+    if (is.finite(inc.trt) && is.finite(inc.untrt)) inc.trt - inc.untrt else NA_real_,
+    finite_ratio(data.in$inc[trt.idx], untrt.data.in$inc[untrt.idx]),
+    finite_ratio(data.in$growth[trt.idx], untrt.data.in$growth[untrt.idx]),
+    finite_ratio(data.in$R_wt[trt.idx], untrt.data.in$R_wt[untrt.idx]),
+    finite_ratio(data.in$R_cohort[trt.idx], untrt.data.in$R_cohort[untrt.idx]),
+    finite_ratio(data.in$R_est[trt.idx], untrt.data.in$R_est[untrt.idx]),
+    finite_ratio(data.in$R_true[trt.idx], untrt.data.in$R_true[untrt.idx]),
+    eff.multi1
+  )
+
+  if (length(true.effects) != length(model.names)) {
+    stop(
+      "Internal SEIR true-effect output error: expected ", length(model.names),
+      " effects but obtained ", length(true.effects), "."
+    )
+  }
+
+  out <- data.frame(
+    trans_prob.base1 = rep(trans_prob.base1, length(model.names)),
+    trans_prob.base2 = rep(trans_prob.base2, length(model.names)),
+    eff.multi = rep(eff.multi1, length(model.names)),
+    model = model.names,
+    eff.true = true.effects,
+    stringsAsFactors = FALSE
+  )
   out
 }
