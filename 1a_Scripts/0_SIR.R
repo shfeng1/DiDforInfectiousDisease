@@ -18,16 +18,8 @@ run_SIR_varying <- function(
 
     inf_mean,        # mean infectious period (required)
     inf_var  = NULL, # variance (optional; if NULL ⇒ geometric)
-    stochastic = TRUE, # FALSE uses conditional-mean transitions
-    uniforms = NULL     # optional shared U(0,1) draws for paired Monte Carlo
+    S0 = NULL        # optional susceptible state at simulation start
 ) {
-  if (!is.null(uniforms)) {
-    if (length(uniforms) < time_steps || anyNA(uniforms) ||
-        any(!is.finite(uniforms)) || any(uniforms <= 0) || any(uniforms >= 1)) {
-      stop("uniforms must contain at least time_steps finite values strictly between 0 and 1.")
-    }
-  }
-
   # fix simulation by one extra time step
   Ttot <- time_steps + 1
   trans_prob <- c(NA, trans_prob)
@@ -45,7 +37,10 @@ run_SIR_varying <- function(
   S <- I <- R <- inc <- Rt_true <- beta_true <- numeric(Ttot)
   
   # 3) initial conditions at t = 1
-  S[1]         <- pop.size - seeds - recovered
+  S[1]         <- if (is.null(S0)) pop.size - seeds - recovered else as.numeric(S0)
+  if (length(S[1]) != 1L || !is.finite(S[1]) || S[1] < 0 || S[1] > pop.size) {
+    stop("S0 must be NULL or one finite value between 0 and pop.size.")
+  }
   I[1]         <- seeds
   R[1]         <- recovered
   inc[1]       <- seeds
@@ -58,13 +53,7 @@ run_SIR_varying <- function(
     
     # draw new infections
     lambda_t <- beta_t * I[t-1] * (S[t-1] / pop.size)
-    trans_t <- if (!stochastic) {
-      lambda_t
-    } else if (is.null(uniforms)) {
-      rpois(1, lambda_t)
-    } else {
-      qpois(uniforms[t-1], lambda_t)
-    }
+    trans_t  <- rpois(1, lambda_t)
     
     # update susceptibles and incidence
     S[t]   <- S[t-1] - trans_t
@@ -107,7 +96,7 @@ run_SIR_varying <- function(
 #### 5) Bias correction
 SIR_sim <- function(pop.size, N, N1, T0, T1, burnin, seed1, seed2, inf_mean,
                     trans_prob.base1, trans_prob.base2, eff.multi1, parallel.id=0,
-                    smearing=FALSE, smearing_reps=500L, smearing_method="local") {
+                    simulate_from_trt=FALSE) {
   parallel.id <- paste0("SIR", parallel.id)
   out.df <- gen_SIR(trans_prob.base1, trans_prob.base2, eff.multi1, inf_mean) # simulate data according SIR
   data.in <- process_data(out.df, inf_mean, agg, dgp="SIR") # estimate R_t, beta_t, aggregate to weekly level
@@ -116,14 +105,11 @@ SIR_sim <- function(pop.size, N, N1, T0, T1, burnin, seed1, seed2, inf_mean,
   loginc.out <- run_loginc(data.in, parallel.id)
   growth.out <- run_growth(data.in, parallel.id)
   Rt_wt.out <- run_Rt(data.in, out.df, type="wt", dgp="SIR", inf_mean=inf_mean, parallel.id=parallel.id,
-                       smearing=smearing, smearing_reps=smearing_reps,
-                       smearing_method=smearing_method)
+                       simulate_from_trt=simulate_from_trt)
   Rt_est.out <- run_Rt(data.in, out.df, type="est", dgp="SIR", inf_mean=inf_mean, parallel.id=parallel.id,
-                        smearing=smearing, smearing_reps=smearing_reps,
-                       smearing_method=smearing_method)
+                        simulate_from_trt=simulate_from_trt)
   beta.out <- run_beta(data.in, out.df, dgp="SIR", inf_mean=inf_mean, parallel.id=parallel.id,
-                       smearing=smearing, smearing_reps=smearing_reps,
-                       smearing_method=smearing_method)
+                       simulate_from_trt=simulate_from_trt)
   Y.untrt.true <- run_true(out.df, trans_prob.base1, dgp="SIR")
   ############################################################################################################################
   # summarize outputs
@@ -131,7 +117,7 @@ SIR_sim <- function(pop.size, N, N1, T0, T1, burnin, seed1, seed2, inf_mean,
     mutate(N=N, N1=N1, trans_prob.base1=trans_prob.base1, trans_prob.base2=trans_prob.base2, pop.size=pop.size, seed=seed1,
            eff.multi=eff.multi1, burnin=burnin, T0=T0, T1=T1, 
            S_frac.mean=mean(data.in$S_frac[data.in$trt.time]), S_frac.min=min(data.in$S_frac),
-           Y.trt=Y.obs, Y.untrt.true=Y.untrt.true)
+           Y.trt=mean(data.in$inc[data.in$trt_post]), Y.untrt.true=Y.untrt.true)
   # true AME * T1 / pop.size is the effect size as % population
   
   return(out)
@@ -209,10 +195,11 @@ SIR_true_eff <- function(trans_prob.base1, trans_prob.base2, eff.multi1) {
   # Construct the untreated counterfactual
   untrt.df <- lapply(1:N1, function(ind) { 
     run_SIR_varying(pop.size=pop.size, time_steps=(T0+T1+burnin*3), seeds=seed1, inf_mean=inf_mean,
-                    trans_prob = rep(trans_prob.base1, (T0+T1+burnin*3)))}) %>% rbindlist() %>% 
-    mutate(unit=rep((1:N1), each=(T0+T1+burnin*3)),
-           prevalence = compute_prevalence(inf_mean=inf_mean, ID=unit, inc=inc, time=t, Ttot=T0+T1+burnin),
-           R_cohort = compute_Rt_cohort(inc, unit, inf_mean, (T0+T1+burnin*3)))
+                    trans_prob = rep(trans_prob.base1, (T0+T1+burnin*3)))}) %>%
+    rbindlist() %>%
+    mutate(unit=rep((1:N1), each=(T0+T1+burnin*3)), initial_seed=seed1)
+  untrt.df$prevalence <- compute_prevalence_seeded(untrt.df, inf_mean, T0+T1+burnin)
+  untrt.df$R_cohort <- compute_Rt_cohort_seeded(untrt.df, inf_mean)
   untrt.data.in <- process_data(untrt.df, inf_mean, agg, dgp="SIR")
   
   out <- data.frame(trans_prob.base1=trans_prob.base1, trans_prob.base2=trans_prob.base2,

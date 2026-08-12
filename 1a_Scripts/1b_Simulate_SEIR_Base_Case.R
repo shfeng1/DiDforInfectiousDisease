@@ -3,10 +3,6 @@ here::i_am("1a_Scripts/1b_Simulate_SEIR_Base_Case.R")
 source("./global_options.R")
 source("./1a_Scripts/0_SEIR.R")
 
-smearing <- FALSE
-smearing.method <- "local"
-smearing.reps <- 500L
-
 sim.param <- expand.grid(trans_prob.base2=1.15/inf_mean, trans_prob.ratio=1.1,
                          eff.multi=c(0.8, 1, 1.1, 1.2)) %>% # only need to simulate for the extreme ends
   mutate(trans_prob.base1=trans_prob.base2*trans_prob.ratio)
@@ -26,22 +22,32 @@ for (j in 1:nrow(sim.param)) {
                  T0=T0, T1=T1, burnin=burnin, inf_mean=inf_mean, delta=delta,
                  trans_prob.base1=sim.param$trans_prob.base1[j],
                  trans_prob.base2=sim.param$trans_prob.base2[j],
-                 eff.multi1=sim.param$eff.multi[j], parallel.id=s,
-                smearing=smearing, smearing_reps=smearing.reps,
-                smearing_method=smearing.method),
+                 eff.multi1=sim.param$eff.multi[j], parallel.id=s),
         
         # Allow epidemic extinction to pass
         epidemic_extinct = function(e) NULL,
-        # Skip only the two explicitly allowed transient NFS writer errors.
-        # Every other failure now reports the parameter row, replicate, and
-        # exact my_RStata stage instead of collapsing to "cannot open the connection".
-        error = function(e) handle_simulation_error(e, j, s))
+        
+        # Allow the known writer error
+        error = function(e) {
+          msg <- conditionMessage(e)
+          
+          allowed_write_error <-
+            grepl("unable to open file for writing", msg, fixed = TRUE) &&
+            (
+              grepl("Stale NFS file handle", msg, fixed = TRUE) ||
+                grepl("Operation timed out", msg, fixed = TRUE)
+            )
+          
+          if (allowed_write_error) {
+            return(NULL)
+          }
+          
+          # Any other error stops the parallel batch.
+          stop(e)
+        })
     }
   sim.out <- rbind(sim.out, out)
 }
 
-if (nrow(sim.out) == 0L) stop("No SEIR base-case simulations completed successfully.")
-output.file <- "./4_Output/SEIR_base_case.rds"
-dir.create(dirname(output.file), recursive=TRUE, showWarnings=FALSE)
-if (file.exists(output.file)) sim.out <- rbind(readRDS(output.file), sim.out)
-saveRDS(sim.out, output.file)
+# saveRDS(sim.out, "./4_Output/SEIR_base_case.rds")
+saveRDS(rbind(sim.out, readRDS("./4_Output/SEIR_base_case.rds")), "./4_Output/SEIR_base_case.rds")

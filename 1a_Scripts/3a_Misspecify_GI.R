@@ -17,7 +17,7 @@ sim.param <- rbind(expand.grid(mean_spe=c(0.8, 1, 1.2), var_spe=1, eff.multi=c(0
 sim.out <- data.frame()
 for (j in 1:nrow(sim.param)) {
   print(j)
-  set.seed(3000+j, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
+  set.seed(j, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
   out <- foreach(s = 1:nsim,
                  .combine = "rbind",
                  .errorhandling = "stop") %dopar%
@@ -28,13 +28,28 @@ for (j in 1:nrow(sim.param)) {
         
         # Allow epidemic extinction to pass
         epidemic_extinct = function(e) NULL,
-        error = function(e) handle_simulation_error(e, j, s))
+        
+        # Allow the known writer error
+        error = function(e) {
+          msg <- conditionMessage(e)
+          
+          allowed_write_error <-
+            grepl("unable to open file for writing", msg, fixed = TRUE) &&
+            (
+              grepl("Stale NFS file handle", msg, fixed = TRUE) ||
+                grepl("Operation timed out", msg, fixed = TRUE)
+            )
+          
+          if (allowed_write_error) {
+            return(NULL)
+          }
+          
+          # Any other error stops the parallel batch.
+          stop(e)
+        })
     }
   sim.out <- rbind(sim.out, out)
 }
 
-if (nrow(sim.out) == 0L) stop("No GI-misspecification simulations completed successfully.")
-output.file <- "./4_Output/misspecify_GI.rds"
-dir.create(dirname(output.file), recursive=TRUE, showWarnings=FALSE)
-if (file.exists(output.file)) sim.out <- rbind(readRDS(output.file), sim.out)
-saveRDS(sim.out, output.file)
+saveRDS(sim.out, "./4_Output/misspecify_GI.rds")
+# saveRDS(rbind(readRDS("./4_Output/misspecify_GI.rds"), sim.out), "./4_Output/misspecify_GI.rds")

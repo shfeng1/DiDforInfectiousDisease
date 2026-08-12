@@ -12,19 +12,6 @@
 #   AME.adj1
 #   AME.adj2
 #
-# Optional smearing runs additionally contain:
-#
-#   Y.untrt.smear
-#   AME.smear
-#
-# The summary layer NEVER reconstructs an untreated outcome from an AME.  It
-# reads the untreated outcomes directly and verifies the identities:
-#
-#   AME      = Y.obs - Y.untrt
-#   AME.adj1 = Y.obs - Y.untrt.adj1
-#   AME.adj2 = Y.obs - Y.untrt.adj2
-#   AME.smear = Y.obs - Y.untrt.smear, when smearing is requested
-#
 # The true simulation AME is calculated in the same direction:
 #
 #   AME.true = Y.obs - Y.untrt.true
@@ -37,6 +24,23 @@ read_required_rds <- function(path) {
     )
   }
   readRDS(path)
+}
+
+
+filter_simulation_start <- function(data, simulate_from_trt = FALSE) {
+  if (!is.logical(simulate_from_trt) || length(simulate_from_trt) != 1L ||
+      is.na(simulate_from_trt)) {
+    stop("simulate_from_trt must be exactly TRUE or FALSE.")
+  }
+  if (!("simulate_from_trt" %in% names(data))) {
+    return(data)
+  }
+
+  keep <- data$simulate_from_trt %in% simulate_from_trt
+  if (!any(keep)) {
+    stop("No simulation rows were found for simulate_from_trt=", simulate_from_trt, ".")
+  }
+  data[keep, , drop = FALSE]
 }
 
 assert_required_columns <- function(data, columns,
@@ -86,16 +90,6 @@ add_direct_ame_estimands <- function(data) {
   }
   if (!same_with_na(data$AME.adj2, expected_ame_adj2)) {
     stop("Stored AME.adj2 is not equal to Y.obs - Y.untrt.adj2.")
-  }
-
-  if (all(c("Y.untrt.smear", "AME.smear") %in% names(data))) {
-    has_smear <- !is.na(data$Y.untrt.smear) | !is.na(data$AME.smear)
-    if (any(has_smear)) {
-      expected_ame_smear <- data$Y.obs - data$Y.untrt.smear
-      if (!same_with_na(data$AME.smear, expected_ame_smear)) {
-        stop("Stored AME.smear is not equal to Y.obs - Y.untrt.smear.")
-      }
-    }
   }
 
   data %>% mutate(AME.true = Y.obs - Y.untrt.true)

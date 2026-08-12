@@ -20,8 +20,7 @@ get_var <- function(mod, # fitted Poisson regression model
     )
   }
 
-  # NECESSARY FIX [BC-REFERENCE-LEVEL]:
-  # The model formula contains factor(unit), so the model frame normally stores
+  # # The model formula contains factor(unit), so the model frame normally stores
   # that evaluated variable under the name "factor(unit)", NOT under "unit".
   # Using mod$model$unit therefore returns NULL and falsely reports every unit
   # (including unit 1) as absent.  Read the fitted factor levels from xlevels,

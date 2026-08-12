@@ -17,16 +17,19 @@ df.model <- df %>% filter(date >= "2020-03-13") %>% # to make sure the treatment
          E_lag = lag(infections, 1),
          sus_frac = (coestpop2019 - cum.incidence) / coestpop2019)
 ################################################################################################################################
-inf_days <- 5; inf_days_std <- 2; delta <- 3 # Cori et al. instantaneous Rt
+# Compute prevalence from the incidence time-series by convolving the residence times in both 
+# Exposed and Infectious compartments according to a Geometric distribution
+inf_days <- 5; inf_days_std <- 2; delta <- 3 # Cori et al. instantaneous Rt --> we call it prevalence Rt
 df.model$prevalence <- compute_prevalence(inf_mean=inf_days, ID=df.model$ncounty, inc=df.model$infections, 
                                           time=df.model$time, Ttot=max(df.model$time))
 df.model$infected_est <- compute_infected(delta=delta, ID=df.model$ncounty, inc=df.model$infections, 
                                           time=df.model$time, Ttot=max(df.model$time)-1)
-df.model$I_est <- compute_prevalence(inf_mean=inf_days, ID=df.model$ncounty, inc=df.model$E_lag,
+df.model$I_est <- compute_prevalence(inf_mean=inf_days, ID=df.model$ncounty, inc=df.model$E_lag / delta, 
                                      time=df.model$time, Ttot=max(df.model$time))
 saveRDS(df.model, "./0_Data/Kansas.rds")
 ################################################################################################################################
 df.first <- df.model %>% filter(dayssincefirstcase == 1)
+# clean up the data set; calculate growth, Rt, beta; and aggregate to weekly level
 df.clean <- df.model %>%
   group_by(ncounty) %>%  arrange(date) %>%
   mutate(week = ceiling(time / 7),
@@ -35,18 +38,14 @@ df.clean <- df.model %>%
          I_est_lag = lag(I_est, 1),
          ncounty = as.numeric(haven::as_factor(ncounty))) %>%
   group_by(ncounty, week) %>%
-  summarise(
-    start_date = min(date), dayssincefirstcase = min(dayssincefirstcase),
-    sus_frac = mean(sus_frac), coestpop2019 = mean(coestpop2019),
-    stnnewcases7davg = mean(stnnewcases7davg), growth = mean(growth),
-    Rt = mean(Rt),
-    Rt_est = sum(infected_est) / sum(prevalence_lag),
-    Rt_exposure = sum(infections) / sum(I_est_lag),
-    infections = mean(infections), 
-    E_lag = mean(E_lag),
-    infected_est = mean(infected_est, na.rm = T),
-    prevalence_lag = mean(prevalence_lag, na.rm = T)
-  ) %>%
+  summarise(start_date = min(date), dayssincefirstcase = min(dayssincefirstcase),
+            sus_frac = mean(sus_frac), coestpop2019 = mean(coestpop2019),
+            stnnewcases7davg = mean(stnnewcases7davg), growth = mean(growth),
+            Rt = mean(Rt), infections = mean(infections), E_lag = mean(E_lag),
+            infected_est = mean(infected_est, na.rm = T),
+            prevalence_lag = mean(prevalence_lag, na.rm = T),
+            Rt_est = sum(infected_est) / sum(prevalence_lag),
+            Rt_exposure = sum(infections) / sum(I_est_lag)) %>%
   dplyr::select(ncounty, week, start_date, dayssincefirstcase, coestpop2019, sus_frac, stnnewcases7davg, 
                 infections, growth, infected_est, prevalence_lag, E_lag, Rt, Rt_est, Rt_exposure) %>%
   ungroup() %>%

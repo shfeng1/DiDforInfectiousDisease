@@ -22,13 +22,28 @@ for (j in 1:nrow(sim.param)) {
         
         # Allow epidemic extinction to pass
         epidemic_extinct = function(e) NULL,
-        error = function(e) handle_simulation_error(e, j, s))
+        
+        # Allow the known writer error
+        error = function(e) {
+          msg <- conditionMessage(e)
+          
+          allowed_write_error <-
+            grepl("unable to open file for writing", msg, fixed = TRUE) &&
+            (
+              grepl("Stale NFS file handle", msg, fixed = TRUE) ||
+                grepl("Operation timed out", msg, fixed = TRUE)
+            )
+          
+          if (allowed_write_error) {
+            return(NULL)
+          }
+          
+          # Any other error stops the parallel batch.
+          stop(e)
+        })
     }
   sim.out <- rbind(sim.out, out)
 }
 
-if (nrow(sim.out) == 0L) stop("No SEIR-as-SIR simulations completed successfully.")
-output.file <- "./4_Output/misspecify_SEIR_to_SIR.rds"
-dir.create(dirname(output.file), recursive=TRUE, showWarnings=FALSE)
-if (file.exists(output.file)) sim.out <- rbind(readRDS(output.file), sim.out)
-saveRDS(sim.out, output.file)
+# saveRDS(sim.out, "./4_Output/misspecify_SEIR_to_SIR.rds")
+saveRDS(rbind(sim.out, readRDS("./4_Output/misspecify_SEIR_to_SIR.rds")), "./4_Output/misspecify_SEIR_to_SIR.rds")
