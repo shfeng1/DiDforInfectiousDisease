@@ -3,7 +3,7 @@ source("./global_options.R")
 source("./1a_Scripts/0_Format_Table.R")
 source("./1b_Summarize/0_AME_Summary_Helpers.R")
 
-p_out <- read_required_rds("./4_Output/SIR_N1=5_seeded_estimators.rds") %>%
+p_out <- read_required_rds("./4_Output/SIR_N1=5.rds") %>%
   mutate(model.lab = case_when(var=="inc" ~ "incidence",
                                var=="loginc" ~ "log incidence",
                                var=="growth" ~ "log growth",

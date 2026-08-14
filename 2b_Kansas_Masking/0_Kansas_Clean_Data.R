@@ -22,7 +22,7 @@ df.model$prevalence <- compute_prevalence(inf_mean=inf_days, ID=df.model$ncounty
                                           time=df.model$time, Ttot=max(df.model$time))
 df.model$infected_est <- compute_infected(delta=delta, ID=df.model$ncounty, inc=df.model$infections, 
                                           time=df.model$time, Ttot=max(df.model$time)-1)
-df.model$I_est <- compute_prevalence(inf_mean=inf_days, ID=df.model$ncounty, inc=df.model$E_lag,
+df.model$I_est <- compute_prevalence(inf_mean=inf_days, ID=df.model$ncounty, inc=df.model$E_lag / delta,
                                      time=df.model$time, Ttot=max(df.model$time))
 saveRDS(df.model, "./0_Data/Kansas.rds")
 ################################################################################################################################

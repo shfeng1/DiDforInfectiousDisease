@@ -63,7 +63,7 @@ for (k in seq_len(nrow(Rt_est.AME))) {
       run_Rt(data.in=data.model, out.df=out.df, type="est", dgp="SEIR", inf_mean=inf_days, delta=delta,
              trt.IDs=county.trt, coef=coef_i, parallel.id=s,
              unit_population=unit.population, incidence_scale=incidence.scale,
-             incidence_aggregation="mean", simulate_from_trt=FALSE, difference=FALSE),
+             incidence_aggregation="mean", simulate_from_trt=FALSE, difference=TRUE),
       error=function(e) {
         msg <- conditionMessage(e)
         allowed_write_error <- grepl("unable to open file for writing", msg, fixed=TRUE) &&

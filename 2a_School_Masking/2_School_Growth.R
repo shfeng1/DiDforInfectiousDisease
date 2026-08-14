@@ -32,7 +32,7 @@ time_to_trt <- as.numeric(sapply(names(coef(fit)), function(var) substr(var, 7, 
 ATT_gt <- boottest.glm(fit, M=1000, gweight=gweight, model="growth")
 
 rownames(ATT_gt) <- time_to_trt
-ATT <- colMeans(ATT_gt[rownames(ATT_gt) >= 0,])
+ATT <- colMeans(ATT_gt[as.numeric(rownames(ATT_gt)) >= 0,])
 
 print("------------------ LOG GROWTH MODEL ------------------")
 print(paste0("15-week treatment effect: ", round(exp(mean(ATT)), 2), " with CI: (",  

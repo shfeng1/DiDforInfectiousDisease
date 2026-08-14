@@ -31,7 +31,7 @@ fit <- feols(y ~ sunab(group, time, ref.c = 10000) | ID + time, weights = df_sun
 time_to_trt <- as.numeric(sapply(names(coef(fit)), function(var) substr(var, 7, nchar(var))))
 ATT_gt <- boottest.glm(fit, M=1000, gweight=gweight, model="inc")
 rownames(ATT_gt) <- time_to_trt
-ATT <- colSums(ATT_gt[rownames(ATT_gt) >= 0,])
+ATT <- colSums(ATT_gt[as.numeric(rownames(ATT_gt)) >= 0,])
 
 print("------------------ INCIDENCE MODEL ------------------")
 print(paste0("15-week treatment effect and AME are the same: ", round(mean(ATT), 1), " with CI: (",  
@@ -49,7 +49,7 @@ fit <- fepois(y ~ sunab(group, time, ref.c = 10000) | ID + time, weights = df_su
 time_to_trt <- as.numeric(sapply(names(coef(fit)), function(var) substr(var, 7, nchar(var))))
 ATT_gt <- boottest.glm(fit, M=1000, gweight=gweight, model="loginc")
 rownames(ATT_gt) <- time_to_trt
-ATT <- colMeans(ATT_gt[rownames(ATT_gt) >= 0,])
+ATT <- colMeans(ATT_gt[as.numeric(rownames(ATT_gt)) >= 0,])
 
 print("------------------ LOG INCIDENCE MODEL ------------------")
 print(paste0("15-week treatment effect: ", round(exp(mean(ATT)), 2), " with CI: (",  

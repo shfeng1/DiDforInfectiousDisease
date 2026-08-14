@@ -20,11 +20,6 @@ get_var <- function(mod, # fitted Poisson regression model
     )
   }
 
-  # # The model formula contains factor(unit), so the model frame normally stores
-  # that evaluated variable under the name "factor(unit)", NOT under "unit".
-  # Using mod$model$unit therefore returns NULL and falsely reports every unit
-  # (including unit 1) as absent.  Read the fitted factor levels from xlevels,
-  # with a model-frame fallback for compatibility with alternative model fits.
   unit.levels <- mod$xlevels[["factor(unit)"]]
   if (is.null(unit.levels)) {
     unit.column <- intersect(c("factor(unit)", "unit"), names(mod$model))
