@@ -6,7 +6,7 @@ source("./1a_Scripts/0_Run_Estimators.R")
 df.in <- readRDS("./0_Data/Kansas_Cleaned.rds")
 county.trt <- sort(unique(df.in$ncounty[df.in$trt_post]))
 growth.fit <- glm(growth ~ -1 + factor(week) + factor(ncounty) + factor(trt_post), data=df.in, family=poisson())
-growth.coef <- tail(growth.fit$coefficients, 1) # -0.005761539
+growth.coef <- tail(growth.fit$coefficients, 1) # -0.08332984
 growth.out <- capture.output(stata("glm growth trt_post i.ncounty i.week, family(poisson) link(log)
     boottest trt_post, cluster(ncounty) reps(10000)", stata.echo = T, data.in = df.in))
 ####################################################################################################################################
@@ -29,21 +29,21 @@ print(paste0("Treatment effect: ", round(exp(growth.coef), 2), " with CI: (",
              strsplit(trimws(tail(growth.out, 1)), "     ")[[1]][2]))
 ####################################################################################################################################
 ## CONVERT TO AME
-data.model <- df.in %>% mutate(unit = ncounty, inc = stnnewcases7davg, S_frac = sus_frac, week = week - min(df.in$week)+1)
+data.model <- df.in %>% mutate(unit = ncounty, inc = infections, S_frac = sus_frac, week = week - min(df.in$week)+1)
 T0 <- length(unique(data.model$start_date[! data.model$trt.time]))
 T1 <- length(unique(data.model$start_date[data.model$trt.time])); burnin <- 0; agg <- 1
 
 Y.obs <- mean(data.model$inc[data.model$trt_post==1])
 growth.AME <- data.frame(type = c("point estimate", "lower bound", "upper bound"),
                          coef = c(tail(growth.fit$coefficients, 1), lower.bound, upper.bound),
-                         AME.fit = NA, AME.adj1 = NA, AME.adj2 = NA)
+                         AME = NA, AME.adj1 = NA, AME.adj2 = NA)
 for (coef in growth.AME$coef) {
   tmp <- run_growth(data.model, trt.IDs=county.trt, coef=coef)
-  growth.AME$AME.fit[growth.AME$coef==coef] <- mean(tmp$AME)
+  growth.AME$AME[growth.AME$coef==coef] <- mean(tmp$AME)
   growth.AME$AME.adj1[growth.AME$coef==coef] <- mean(tmp$AME.adj1)
   growth.AME$AME.adj2[growth.AME$coef==coef] <- mean(tmp$AME.adj2)
 }
-print(paste0("AME: ", format(round(growth.AME$AME.adj2[1], 1), nsmall=1), " with CI: (", 
-             format(round(growth.AME$AME.adj2[2], 1), nsmall=1), ", ", 
-             format(round(growth.AME$AME.adj2[3], 1), nsmall=1), ")", " and p-value = ",
+print(paste0("AME: ", format(round(growth.AME$AME[1], 1), nsmall=1), " with CI: (", 
+             format(round(growth.AME$AME[2], 1), nsmall=1), ", ", 
+             format(round(growth.AME$AME[3], 1), nsmall=1), ")", " and p-value = ",
              strsplit(trimws(tail(growth.out, 1)), "     ")[[1]][2]))

@@ -32,7 +32,6 @@ print(paste0("Treatment effect: ", round(exp(beta_exposure.coef), 2), " with CI:
              format(round(exp(lower.bound), 2), nsmall=2), ", ", 
              format(round(exp(upper.bound), 2), nsmall=2), ")", " and p-value = ",
              strsplit(trimws(tail(beta_exposure.out, 1)), "     ")[[1]][2]))
-# Treatment effect: 0.92 with CI: (0.85, 1.00) and p-value = 0.0429
 ####################################################################################################################################
 ## CONVERT TO AME
 incidence.scale <- 100000
@@ -41,29 +40,28 @@ unit.population.df <- df.in %>%
   transmute(unit=as.character(ncounty), population=coestpop2019) %>%
   distinct()
 unit.population <- setNames(unit.population.df$population, unit.population.df$unit)
-data.model <- df.in %>% mutate(unit=ncounty, beta_est=beta_exposure,
-  inc=stnnewcases7davg, S_frac=sus_frac,
-  week=week-min(df.in$week)+1)
+data.model <- df.in %>% mutate(unit=ncounty, beta_est=beta_exposure, inc=stnnewcases7davg, 
+                               S_frac=sus_frac, week=week-min(df.in$week)+1)
 T0 <- length(unique(data.model$start_date[!data.model$trt.time]))*agg
 T1 <- length(unique(data.model$start_date))*agg-T0
 out.df <- df.model %>% filter(date >= "2020-06-05", date < "2020-12-11",
   ncounty %in% county.trt, !ncounty %in% df.first$ncounty[df.first$date >= "2020-06-24"]) %>%
   group_by(ncounty) %>% arrange(time) %>%
   mutate(unit=ncounty, S=sus_frac*coestpop2019, S_frac=sus_frac, Rt=NULL,
-         I=I_est, E=infections, R=0, inc=stnnewcases7davg, t=1:n())
+         I=I_est, E=infections, R=0, t=1:n())
 
 beta_exposure.AME <- data.frame(type=c("point estimate","lower bound","upper bound"),
   coef=c(beta_exposure.coef, lower.bound, upper.bound), AME=NA, AME.adj1=NA, AME.adj2=NA)
 
 for (k in seq_len(nrow(beta_exposure.AME))) {
   coef_i <- as.numeric(beta_exposure.AME$coef[k])
-  sim.out <- foreach(s=1:100, .combine="rbind", .errorhandling="stop", .export="coef_i") %dopar% {
-    set.seed(123+s, kind="L'Ecuyer-CMRG")
+  sim.out <- foreach(s=1:50, .combine="rbind", .errorhandling="stop", .export="coef_i") %dopar% {
+    set.seed(123, kind="L'Ecuyer-CMRG")
     tryCatch(
       run_beta(data.in=data.model, out.df=out.df, dgp="SEIR", inf_mean=inf_days, delta=delta,
                trt.IDs=county.trt, coef=coef_i, parallel.id=s,
                unit_population=unit.population, incidence_scale=incidence.scale,
-               incidence_aggregation="mean", simulate_from_trt=FALSE, difference=TRUE),
+               simulate_from_trt=FALSE, difference=TRUE),
       error=function(e) {
         msg <- conditionMessage(e)
         allowed_write_error <- grepl("unable to open file for writing", msg, fixed=TRUE) &&

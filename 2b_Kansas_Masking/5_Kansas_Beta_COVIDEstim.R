@@ -12,7 +12,6 @@ beta.fit <- glm(beta ~ -1 + factor(week) + factor(ncounty) + factor(trt_post), d
 beta.coef <- tail(beta.fit$coefficients, 1) # -0.0627032
 beta.out <- capture.output(stata("glm beta trt_post i.ncounty i.week, family(poisson) link(log)
     boottest trt_post, cluster(ncounty) reps(10000)", stata.echo = T, data.in = df.in))
-# z = -1.6445; p = 0.1123; b = -0.0627032; RR = 0.9392222
 ####################################################################################################################################
 # Get confidence interval
 beta.p <- data.frame(b0=as.numeric(beta.coef), p=0.1123)
@@ -32,7 +31,6 @@ print("------------------ LOG BETAt (COVIDestim) MODEL ------------------")
 print(paste0("Treatment effect: ", round(exp(beta.coef), 2), " with CI: (", 
              round(exp(lower.bound), 2), ", ", round(exp(upper.bound), 2), ")", " and p-value = ",
              strsplit(trimws(tail(beta.out, 1)), "     ")[[1]][2]))
-# Treatment effect: 0.94 with CI: (0.87, 1.02) and p-value = 0.1123
 ####################################################################################################################################
 ## CONVERT TO AME
 incidence.scale <- 100000
@@ -41,7 +39,7 @@ unit.population.df <- df.in %>%
   transmute(unit=as.character(ncounty), population=coestpop2019) %>%
   distinct()
 unit.population <- setNames(unit.population.df$population, unit.population.df$unit)
-data.model <- df.in %>% mutate(unit=ncounty, beta_est=beta/inf_days,
+data.model <- df.in %>% mutate(unit=ncounty, beta_est=beta/(agg/inf_days),
   inc=stnnewcases7davg, S_frac=sus_frac,
   week=week-min(df.in$week)+1)
 T0 <- length(unique(data.model$start_date[!data.model$trt.time]))*agg
@@ -50,20 +48,20 @@ out.df <- df.model %>% filter(date >= "2020-06-05", date < "2020-12-11",
   ncounty %in% county.trt, !ncounty %in% df.first$ncounty[df.first$date >= "2020-06-24"]) %>%
   group_by(ncounty) %>% arrange(time) %>%
   mutate(unit=ncounty, S=sus_frac*coestpop2019, S_frac=sus_frac, Rt=NULL,
-         I=I_est, E=infections, R=0, inc=stnnewcases7davg, t=1:n())
+         I=I_est, E=infections, R=0, t=1:n())
 
 beta.AME <- data.frame(type=c("point estimate","lower bound","upper bound"),
-  coef=c(beta.coef, lower.bound, upper.bound), AME=NA_real_, AME.adj1=NA_real_, AME.adj2=NA_real_)
+  coef=c(beta.coef, lower.bound, upper.bound), AME=NA, AME.adj1=NA, AME.adj2=NA)
 
 for (k in seq_len(nrow(beta.AME))) {
   coef_i <- as.numeric(beta.AME$coef[k])
-  sim.out <- foreach(s=1:100, .combine="rbind", .errorhandling="stop", .export="coef_i") %dopar% {
-    set.seed(12345+s, kind="L'Ecuyer-CMRG")
+  sim.out <- foreach(s=1:50, .combine="rbind", .errorhandling="stop", .export="coef_i") %dopar% {
+    set.seed(12345, kind="L'Ecuyer-CMRG")
     tryCatch(
       run_beta(data.in=data.model, out.df=out.df, dgp="SEIR", inf_mean=inf_days, delta=delta,
                trt.IDs=county.trt, coef=coef_i, parallel.id=s,
                unit_population=unit.population, incidence_scale=incidence.scale,
-               incidence_aggregation="mean", simulate_from_trt=FALSE, difference=TRUE),
+               simulate_from_trt=FALSE, difference=TRUE),
       error=function(e) {
         msg <- conditionMessage(e)
         allowed_write_error <- grepl("unable to open file for writing", msg, fixed=TRUE) &&

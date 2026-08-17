@@ -438,56 +438,85 @@ run_true <- function(out.df, trans_prob.base1, dgp, trt.IDs=1:N1) {
 
 # Helper functions for School Masking example
 loginc_AME <- function(coef, subset=NULL) {
-  ATT_gt.tmp <- data.frame(time_to_trt = time_to_trt, coef = coef)
-  loginc.obs <- df_sunab %>% mutate(time_to_trt = time - group)
-  
-  if (!is.null(subset)) {
-    loginc.obs <- loginc.obs %>% filter(time_to_trt %in% subset)
+  if (is.null(subset)) {
+    ind <- time_to_trt >= 0
   } else {
-    loginc.obs <- loginc.obs %>% filter(time_to_trt >= 0)
+    ind <- time_to_trt %in% subset
   }
-    
+  
+  ATT <- mean(coef[ind])
+  
+  loginc.obs <- df_sunab %>%
+    mutate(time_to_trt = time - group)
+  
+  if (is.null(subset)) {
+    loginc.obs <- loginc.obs %>%
+      filter(time_to_trt >= 0)
+  } else {
+    loginc.obs <- loginc.obs %>%
+      filter(time_to_trt %in% subset)
+  }
+  
   loginc.obs <- loginc.obs %>%
-    merge(ATT_gt.tmp, by = "time_to_trt") %>%
-    mutate(y.ctl = y/exp(coef), # fitted control potential outcome on case scale, cannot convert on the original log scale b/c of zeros
-           diff = y - y.ctl) %>% # difference to get marginal effect for each unit i to ME
+    mutate(
+      y.ctl = y / exp(ATT),
+      diff = y - y.ctl
+    ) %>%
     group_by(time_to_trt) %>%
-    summarise(diff = mean(diff)) # average over all units to get the average marginal effect
+    summarise(diff = mean(diff), .groups = "drop")
+  
   sum(loginc.obs$diff)
 }
 
 growth_AME <- function(coef, subset=NULL) {
-  ATT_gt.tmp <- data.frame(time_to_trt = time_to_trt, coef = coef)
+  if (is.null(subset)) {
+    ATT <- mean(coef[time_to_trt >= 0])
+  } else {
+    ATT <- mean(coef[time_to_trt %in% subset])
+  }
   
-  df.all <- df_sunab %>% mutate(time_to_trt = time - group)
+  df.all <- df_sunab %>%
+    mutate(time_to_trt = time-group)
+  
   df <- df.all %>%
     filter(time_to_trt >= -1) %>%
-    merge(ATT_gt.tmp, by = "time_to_trt", all.x = T) %>%
-    mutate(coef = ifelse(time_to_trt==-1, 0, coef),
-           growth.ctl = log(y) - coef,
-           Pos.ctl = NA)
+    mutate(
+      coef = ifelse(time_to_trt == -1, 0, ATT),
+      growth.ctl = log(y) - coef,
+      Pos.ctl = NA
+    )
   
   for (unit in unique(df$ID)) {
     for (time in sort(unique(df$time[df$ID==unit]))) {
-      if ((time+1) == unique(df$group[df$ID==unit])) { # last period before intervention
-        inc.last <- df$PosPer1K[df$ID==unit & df$time==time]
-        if (inc.last==0) {
-          df$Pos.ctl[df$ID==unit & df$time==time] <- inc.last
-        } else {
-          df$Pos.ctl[df$ID==unit & df$time==time] <- mean(df.all$PosPer1K[df.all$ID==unit & df.all$time %in% (time-4):time])
-        }
-      } else { # recover the untreated trajectory for the treated group
-        time.ind <- ifelse(nrow(df[df$ID==unit & df$time==time-1,])==0, 2, 1)
-        df$Pos.ctl[df$ID==unit & df$time==time] <- df$Pos.ctl[df$ID==unit & df$time==time-time.ind] * 
+      
+      if ((time+1) == unique(df$group[df$ID==unit])) {
+        
+        # Last observed period before treatment
+        df$Pos.ctl[df$ID==unit & df$time==time] <-
+          df$PosPer1K[df$ID==unit & df$time==time]
+        
+      } else {
+        
+        time.ind <- ifelse(
+          nrow(df[df$ID==unit & df$time==time-1,]) == 0,
+          2, 1
+        )
+        
+        df$Pos.ctl[df$ID==unit & df$time==time] <-
+          df$Pos.ctl[df$ID==unit & df$time==time-time.ind] *
           exp(df$growth.ctl[df$ID==unit & df$time==time])
       }
     }
   }
   
-  if (!is.null(subset)) df <- df %>% filter(time_to_trt %in% subset)
+  if (!is.null(subset))
+    df <- df %>% filter(time_to_trt %in% subset)
   
-  df <- df %>% filter(time >= group) %>%
-    mutate(diff = PosPer1K - Pos.ctl) %>%
-    group_by(ID) %>% summarise(diff = sum(diff)) # difference to get marginal effect for each unit
-  mean(df$diff) # average over all units to get the AME
+  df <- df %>%
+    filter(time >= group) %>%
+    mutate(diff=PosPer1K-Pos.ctl) %>%
+    group_by(ID) %>%
+    summarise(diff=sum(diff), .groups="drop")
+  
+  mean(df$diff)
 }

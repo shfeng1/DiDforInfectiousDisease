@@ -20,7 +20,7 @@ options(dplyr.summarise.inform = FALSE)
 options("RStata.StataPath"="/Applications/Stata/StataSE.app/Contents/MacOS/stata-se")
 options("RStata.StataVersion"=15.1)
 
-doMC::registerDoMC(cores = parallel::detectCores())
+doMC::registerDoMC(cores = parallel::detectCores()-1)
 
 pal <- c("darkgrey", "#984EA3", "#FF5932", "olivedrab4", "tan3", "#377EB8")
 

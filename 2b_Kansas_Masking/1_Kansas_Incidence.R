@@ -7,7 +7,6 @@ inc.fit <- lm(stnnewcases7davg ~ factor(ncounty) + factor(week) + factor(trt_pos
 inc.coef <- tail(inc.fit$coefficients, 1) # -20.39995
 inc.out <- capture.output(stata("glm stnnewcases7davg trt_post i.ncounty i.week, family(gaussian) link(identity)
                                 boottest trt_post, cluster(ncounty) reps(10000)", stata.echo = T, data.in = df.in))
-# z = -4.2559; p = 0.0000; b = -20.39995
 ####################################################################################################################################
 # Get confidence interval from inverting null hypothesis
 inc.p <- data.frame(b0 = as.numeric(inc.coef), p = 0.0000)
@@ -33,9 +32,6 @@ loginc.fit <- glm(stnnewcases7davg ~ factor(ncounty) + factor(week) + factor(trt
 loginc.coef <- tail(loginc.fit$coef, 1) # -0.9643996 
 loginc.out <- capture.output(stata("glm stnnewcases7davg trt_post i.ncounty i.week, family(poisson) link(log)
     boottest trt_post, cluster(ncounty) reps(10000)", stata.echo = T, data.in = df.in))
-trimws(loginc.out[length(loginc.out)-1])
-trimws(tail(loginc.out, 1))
-# z = -2.4242; p = 0.0028; b = -0.9643996; RR = 0.381212
 ####################################################################################################################################
 # Get confidence interval
 loginc.p <- data.frame(b0 = as.numeric(loginc.coef), p = 0.0028)
@@ -60,6 +56,5 @@ print(paste0("Treatment effect: ", round(exp(loginc.coef), 2), " with CI: (",
 loginc.AME <- mean(df.in$stnnewcases7davg[df.in$trt_post] - df.in$stnnewcases7davg[df.in$trt_post]/exp(tail(loginc.fit$coef, 1)))
 loginc.AME.lo <- mean(df.in$stnnewcases7davg[df.in$trt_post] - df.in$stnnewcases7davg[df.in$trt_post]/exp(lower.bound))
 loginc.AME.hi <- mean(df.in$stnnewcases7davg[df.in$trt_post] - df.in$stnnewcases7davg[df.in$trt_post]/exp(upper.bound))
-print(paste0("AME: ", round(loginc.AME, 1), " with CI: (", 
-             round(loginc.AME.lo, 1), ", ", round(loginc.AME.hi, 1), ")", " and p-value = ",
-             strsplit(trimws(tail(loginc.out, 1)), "     ")[[1]][2]))
+print(paste0("AME: ", round(loginc.AME, 1), " with CI: (", round(loginc.AME.lo, 1), ", ", round(loginc.AME.hi, 1), 
+             ")", " and p-value = ", strsplit(trimws(tail(loginc.out, 1)), "     ")[[1]][2]))

@@ -1,4 +1,4 @@
-boottest.glm <- function(fit, M=5000, gweight, model, seed=12345) {
+boottest.glm <- function(fit, M=1000, gweight, model, seed=2026) {
   coef <- fit$coefficients
   score <- fit$scores
   H <- fit$hessian
@@ -9,15 +9,12 @@ boottest.glm <- function(fit, M=5000, gweight, model, seed=12345) {
                      .combine = "cbind",
                      .errorhandling = "remove") %dopar% 
     { 
-      score.boot <- do.call(cbind, lapply(1:ncol(score), function(i) {
-        df.boot <- df_sunab %>%
-          mutate(score = score[,i]) %>%
-          group_by(ID) %>%
-          mutate(err_sgn_var = rbinom(n(), prob = .5, size = 1),  # specify error sign
-                 err_sgn = ifelse(err_sgn_var[1], -1, 1), # generate +/- 1 for the entire cluster
-                 score.boot = err_sgn/n()*score)
-        df.boot$score.boot
-      }))
+      df.boot <- df_sunab %>%
+        group_by(ID) %>%
+        mutate(err_sgn = sample(c(-1, 1), 1)) %>%
+        ungroup()
+
+      score.boot <- score * df.boot$err_sgn
       
       as.numeric(coef + solve(H) %*% colSums(score.boot))
     }
