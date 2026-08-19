@@ -19,9 +19,32 @@ for (sim_batch in seq(0, 4000, by=1000)) { # seeds set as (j, 1000+j, 2000+j, 30
                    .combine = "rbind",
                    .errorhandling = "stop") %dopar% 
       {
-        SEIR_true_eff(trans_prob.base1 = sim.param$trans_prob.base1[j],
-                      trans_prob.base2 = sim.param$trans_prob.base2[j],
-                      eff.multi1 = sim.param$eff.multi[j])
+        tryCatch(
+          SEIR_true_eff(trans_prob.base1 = sim.param$trans_prob.base1[j],
+                        trans_prob.base2 = sim.param$trans_prob.base2[j],
+                        eff.multi1 = sim.param$eff.multi[j]),
+          
+          # Allow epidemic extinction to pass
+          epidemic_extinct = function(e) NULL,
+          
+          # Allow the known writer error
+          error = function(e) {
+            msg <- conditionMessage(e)
+            
+            allowed_write_error <-
+              grepl("unable to open file for writing", msg, fixed = TRUE) &&
+              (
+                grepl("Stale NFS file handle", msg, fixed = TRUE) ||
+                  grepl("Operation timed out", msg, fixed = TRUE)
+              )
+            
+            if (allowed_write_error) {
+              return(NULL)
+            }
+            
+            # Any other error stops the parallel batch.
+            stop(e)
+          })
       }
     sim.out <- rbind(sim.out, out)
   }

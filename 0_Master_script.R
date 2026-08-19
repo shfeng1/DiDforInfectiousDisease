@@ -1,6 +1,18 @@
 rm(list=ls())
 here::i_am("0_Master_script.R")
 #################################################################################
+####################### Generate simulations from scratch #######################
+### They are commented out intentionally, because it takes days or even weeks on
+### a local machine to reproduce all simulations.
+## source("1a_Scripts/1a_Simulate_SIR_Base_Case.R")
+## source("1a_Scripts/1b_Simulate_SEIR_Base_Case.R")
+## source("1a_Scripts/2a_Calculate_SIR_True_RR.R")
+## source("1a_Scripts/2b_Calculate_SEIR_True_RR.R")
+## source("1a_Scripts/3a_Misspecify_GI.R")
+## source("1a_Scripts/3b_Misspecify_SEIR_to_SIR.R")
+## source("1a_Scripts/4_Simulate_Long_Time.R")
+## source("1a_Scripts/5_Simulate_Inference.R")
+#################################################################################
 # Figure 1
 source("1b_Summarize/1_Simulate_comparison_of_models.R")
 Figure1
@@ -65,3 +77,6 @@ source("2b_Kansas_Masking/6_Kansas_Graph.R")
 FigureA3
 ggsave("./4_Output/Figure A3. Incidence By Kansas County.png", width = 10, height = 5)
 
+# Generation of Table A2
+source("2a_School_Masking/4_School_Callaway_SantAnna.R")
+print(Table_A2)
