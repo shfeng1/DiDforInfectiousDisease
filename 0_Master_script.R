@@ -56,7 +56,6 @@ source("2a_School_Masking/1_School_Incidence.R")
 source("2a_School_Masking/2_School_Growth.R")
 
 # Mask mandates in in Kansas counties
-# Note: the scripts take about 10 minutes with parallel computing
 source("2b_Kansas_Masking/1_Kansas_Incidence.R")
 source("2b_Kansas_Masking/2_Kansas_Growth.R")
 source("2b_Kansas_Masking/3_Kansas_Rt_Exposure.R")

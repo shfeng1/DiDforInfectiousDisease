@@ -4,7 +4,6 @@ source("./global_options.R")
 source("./1a_Scripts/0_SIR.R")
 output.file <- "./4_Output/SIR_base_case.rds"
 nsim <- 1000 # 1K run at a time
-sim.out <- data.frame()
 
 sim.param <- expand.grid(trans_prob.base2=1.15/inf_mean, trans_prob.ratio=c(1, 1.1),
                          eff.multi=c(0.8, 0.9, 0.95, 1, 1.05, 1.1, 1.2)) %>%

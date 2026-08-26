@@ -1,11 +1,16 @@
 # Calculate the expected number of active infection on day t by looking at past incidences
 compute_prevalence <- function(inf_mean, ID, inc, time, Ttot) {
   prevalence <- rep(NA, length(inc))
-  for (i in unique(ID)) {
+  ID.key <- if (inherits(ID, "haven_labelled")) {
+    as.character(unclass(ID))
+  } else {
+    as.character(ID)
+  }
+  for (i in unique(ID.key)) {
     for (t in 2:Ttot) {
-      prevalence[ID==i & time==t] <- sum(sapply(0:(t-1), function(j) {
+      prevalence[ID.key==i & time==t] <- sum(sapply(0:(t-1), function(j) {
         # sum up (inc[t] + w*inc[t-1] + w^2*inc[t-2] + ...)
-        (1 - 1/inf_mean)^j * inc[ID==i & time==(t-j)]
+        (1 - 1/inf_mean)^j * inc[ID.key==i & time==(t-j)]
       }), na.rm = T)
     }
   }
@@ -15,14 +20,19 @@ compute_prevalence <- function(inf_mean, ID, inc, time, Ttot) {
 # Calculate the expected number of individuals currently in the Exposed state on day t
 compute_infected <- function(delta, ID, inc, time, Ttot) {
   infected_est <- rep(NA, length(inc))
-  for (i in unique(ID)) {
+  ID.key <- if (inherits(ID, "haven_labelled")) {
+    as.character(unclass(ID))
+  } else {
+    as.character(ID)
+  }
+  for (i in unique(ID.key)) {
     for (t in 2:Ttot) {
-      inc_today <- inc[ID==i & time==t]
-      inc_tomorrow <- inc[ID==i & time==(t+1)]
+      inc_today <- inc[ID.key==i & time==t]
+      inc_tomorrow <- inc[ID.key==i & time==(t+1)]
       inc_today <- ifelse(is.na(inc_today), 0, inc_today)
       inc_tomorrow <- ifelse(is.na(inc_tomorrow), 0, inc_tomorrow)
       
-      infected_est[ID==i & time==t] <- delta * inc_tomorrow - delta * (1 - 1/delta) * inc_today
+      infected_est[ID.key==i & time==t] <- delta * inc_tomorrow - delta * (1 - 1/delta) * inc_today
     }
   }
   return(infected_est)

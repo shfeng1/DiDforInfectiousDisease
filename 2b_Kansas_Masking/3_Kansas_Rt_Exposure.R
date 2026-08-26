@@ -2,6 +2,7 @@ rm(list=ls())
 here::i_am("2b_Kansas_Masking/3_Kansas_Rt_Exposure.R")
 source("./global_options.R")
 source("./1a_Scripts/0_SEIR.R")
+source("./2b_Kansas_Masking/0_Kansas_AME_Helpers.R")
 inf_days <- 5; delta <- 3
 
 df.model <- readRDS("./0_Data/Kansas.rds")
@@ -33,48 +34,29 @@ print(paste0("Treatment effect: ", round(exp(Rt_exposure.coef), 2), " with CI: (
              strsplit(trimws(tail(Rt_exposure.out, 1)), "     ")[[1]][2]))
 ####################################################################################################################################
 ## CONVERT TO AME
-incidence.scale <- 100000
 unit.population.df <- df.in %>%
   filter(as.character(ncounty) %in% county.trt) %>%
   transmute(unit=as.character(ncounty), population=coestpop2019) %>%
   distinct()
 unit.population <- setNames(unit.population.df$population, unit.population.df$unit)
-data.model <- df.in %>% mutate(unit=ncounty, R_est=Rt_exposure, inc=stnnewcases7davg, 
-                               S_frac=sus_frac,week=week-min(df.in$week)+1)
+data.model <- df.in %>% mutate(
+  unit=ncounty, R_est=Rt_exposure, inc=stnnewcases7davg,
+  S_frac=sus_frac, transmission=Rt_exposure/sus_frac,
+  week=week-min(df.in$week)+1)
 burnin <- 0; agg <- 7
 T0 <- length(unique(data.model$start_date[!data.model$trt.time]))*agg
 T1 <- length(unique(data.model$start_date))*agg-T0
-out.df <- df.model %>% filter(date >= "2020-06-05", date < "2020-12-11",
-  ncounty %in% county.trt, !ncounty %in% df.first$ncounty[df.first$date >= "2020-06-24"]) %>%
-  group_by(ncounty) %>% arrange(time) %>%
-  mutate(unit=ncounty, S=sus_frac*coestpop2019, S_frac=sus_frac, Rt=NULL,
-         I=prevalence, E=infections, R=0, t=1:n())
+out.df <- reconstruct_kansas_case_states(
+  df.model, county.trt, start_date="2020-06-05", end_date="2020-12-10",
+  inf_mean=inf_days, delta=delta)
 
-Rt_exposure.AME <- data.frame(type=c("point estimate","lower bound","upper bound"),
-  coef=c(Rt_exposure.coef, lower.bound, upper.bound), AME=NA, AME.adj1=NA, AME.adj2=NA)
-
-for (k in seq_len(nrow(Rt_exposure.AME))) {
-  coef_i <- as.numeric(Rt_exposure.AME$coef[k])
-  sim.out <- foreach(s=1:50, .combine="rbind", .errorhandling="stop", .export="coef_i") %dopar% {
-    set.seed(12345, kind="L'Ecuyer-CMRG")
-    tryCatch(
-      run_Rt(data.in=data.model, out.df=out.df, type="est", dgp="SEIR", inf_mean=inf_days, delta=delta,
-             trt.IDs=county.trt, coef=coef_i, parallel.id=s,
-             unit_population=unit.population, incidence_scale=incidence.scale,
-             simulate_from_trt=FALSE, difference=TRUE),
-      error=function(e) {
-        msg <- conditionMessage(e)
-        allowed_write_error <- grepl("unable to open file for writing", msg, fixed=TRUE) &&
-          (grepl("Stale NFS file handle", msg, fixed=TRUE) || grepl("Operation timed out", msg, fixed=TRUE))
-        if (allowed_write_error) return(NULL)
-        stop(e)
-      }
-    )
-  }
-  Rt_exposure.AME$AME[k] <- mean(sim.out$AME)
-  Rt_exposure.AME$AME.adj1[k] <- mean(sim.out$AME.adj1)
-  Rt_exposure.AME$AME.adj2[k] <- mean(sim.out$AME.adj2)
-}
+Rt_exposure.AME <- kansas_ame_monte_carlo(
+  data=data.model, state.data=out.df, fit_column="R_est",
+  transmission_column="transmission",
+  coefficients=c(`point estimate`=Rt_exposure.coef,
+                 `lower bound`=lower.bound, `upper bound`=upper.bound),
+  trt.IDs=county.trt, unit_population=unit.population,
+  inf_mean=inf_days, delta=delta, T0_days=T0)
 print(paste0("AME: ", format(round(Rt_exposure.AME$AME[1],1), nsmall=1), " with CI: (",
              format(round(Rt_exposure.AME$AME[2],1), nsmall=1), ", ",
              format(round(Rt_exposure.AME$AME[3],1), nsmall=1), ")"))
