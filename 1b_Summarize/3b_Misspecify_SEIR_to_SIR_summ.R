@@ -3,16 +3,7 @@ here::i_am("1b_Summarize/3b_Misspecify_SEIR_to_SIR_summ.R")
 source("./global_options.R")
 source("./1a_Scripts/0_Format_Table.R")
 
-p_out <- readRDS("./4_Output/misspecify_SEIR_to_SIR.rds") %>%
-  mutate(model.lab = case_when(model=="inc" ~ "incidence", 
-                               model=="loginc" ~ "log incidence",
-                               model=="growth" ~ "log growth",
-                               model=="Rt_wt" ~ "Rt (Wallinga Teunis)",
-                               model=="Rt_est" ~ "Rt (Prevalence Estimation)",
-                               model=="beta" ~ "\u03B2t (Prevalence Estimation)"),
-         model.lab = factor(model.lab, levels = c("incidence", "log incidence", "log growth",
-                                                  "Rt (Wallinga Teunis)", "Rt (Prevalence Estimation)",
-                                                  "\u03B2t (Prevalence Estimation)")))
+p_out <- readRDS("./4_Output/misspecify_SEIR_to_SIR.rds")
 
 eff.truth <- readRDS("./4_Output/SEIR_RR.rds") %>%
   filter(model != "Rt_wt", !is.na(eff.true), trans_prob.base1=="0.1265", trans_prob.base2=="0.115") %>%
@@ -22,7 +13,7 @@ eff.truth <- readRDS("./4_Output/SEIR_RR.rds") %>%
 ##############################################################################################################################
 # Power / type I error rate
 power.df2 <- p_out %>%
-  group_by(model, model.lab, eff.multi) %>%
+  group_by(model, eff.multi) %>%
   summarise(p = mean(p < 0.05)*100, nsim = n())
 ##############################################################################################################################
 bias.df <- p_out %>%
@@ -32,7 +23,7 @@ bias.df <- p_out %>%
          eff.true = ifelse(model=="inc", AME.true, eff.multi))
 ##############################################################################################################################
 bias.AME2 <- bias.df %>%
-  group_by(model, model.lab, eff.multi) %>%
+  group_by(model, eff.multi) %>%
   summarise(nsim = n(), Y.untrt.true = mean(Y.untrt.true), 
             Y.untrt.fit = mean(Y.trt-AME), Y.untrt.adj = mean(Y.trt-AME.adj2),
             AME.true = mean(AME.true), AME.fit = mean(AME), AME.adj = mean(AME.adj2)) %>%
@@ -42,7 +33,7 @@ bias.AME2 <- bias.df %>%
          bias.adj.pct = bias.adj / Y.untrt.true)
 ##############################################################################################################################
 bias.original2 <- bias.df %>% 
-  group_by(eff.multi, model, model.lab) %>%
+  group_by(eff.multi, model) %>%
   summarise(nsim = n(), eff = mean(effect)) %>%
   merge(eff.truth, by = c("eff.multi", "model"))
 bias.original2$eff.true[bias.original2$model=="inc"] <- bias.AME2$AME.true[bias.AME2$model=="inc"]

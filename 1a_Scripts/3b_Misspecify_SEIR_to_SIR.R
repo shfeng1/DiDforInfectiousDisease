@@ -11,6 +11,7 @@ sim.param <- expand.grid(eff.multi=c(0.8, 1, 1.1, 1.2))
 
 # split 5K simulations into 5 batches
 for (sim_batch in seq(0, 4000, by=1000)) { # seeds set as (j, 1000+j, 2000+j, 3000+j, 4000+j)
+  sim.out <- data.frame()
   for (j in 1:nrow(sim.param)) {
     print(j)
     set.seed(sim_batch+j, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
@@ -43,6 +44,7 @@ for (sim_batch in seq(0, 4000, by=1000)) { # seeds set as (j, 1000+j, 2000+j, 30
             stop(e)
           })
       }
+    rownames(out) <- NULL
     sim.out <- rbind(sim.out, out)
   }
   if (file.exists(output.file)) sim.out <- rbind(readRDS(output.file), sim.out)

@@ -40,8 +40,8 @@ inc.fit.agg <- aggte(inc.fit, type = "dynamic", na.rm = T)
 FigureA2 <- ggdid(inc.fit.agg) + 
   geom_hline(yintercept=0, color="darkgray", linetype="dashed") +
   geom_vline(xintercept=0, color="darkgray", linetype="dashed") +
-  scale_x_continuous(breaks = seq(-25, 15, 5)) +
-  scale_y_continuous(limits = c(-15, 20.5), breaks = seq(-15, 20, 5)) +
+  scale_x_continuous(breaks = seq(-12, 6, 2)) +
+  scale_y_continuous(limits = c(-20, 30), breaks = seq(-20, 30, 10)) +
   theme_bw() + xlab("Time to treatment") + ylab("Estimated treatment effect") + 
   ggtitle("Incidence model: replication of original analysis") +
   theme(plot.title=element_text(size=16, face="bold", hjust=0.5), 

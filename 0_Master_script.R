@@ -16,7 +16,7 @@ here::i_am("0_Master_script.R")
 # Figure 1
 source("1b_Summarize/1_Simulate_comparison_of_models.R")
 Figure1
-# ggsave("4_Output/Figure 1. Summary of Models.png", width = 16, height = 10)
+ggsave("4_Output/Figure 1. Summary of Models.png", width = 16, height = 10)
 #################################################################################
 # Generation of Figure 2
 source("1b_Summarize/2a_SIR_summ.R")
@@ -56,7 +56,7 @@ source("2a_School_Masking/1_School_Incidence.R")
 source("2a_School_Masking/2_School_Growth.R")
 
 # Mask mandates in in Kansas counties
-# Note: the scripts take about 20 minutes with parallel computing
+# Note: the scripts take about 10 minutes with parallel computing
 source("2b_Kansas_Masking/1_Kansas_Incidence.R")
 source("2b_Kansas_Masking/2_Kansas_Growth.R")
 source("2b_Kansas_Masking/3_Kansas_Rt_Exposure.R")
