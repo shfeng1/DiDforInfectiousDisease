@@ -4,7 +4,6 @@ source("./global_options.R")
 source("./1a_Scripts/0_Misspecify.R")
 output.file <- "./4_Output/misspecify_SEIR_to_SIR.rds"
 nsim <- 1000 # 1K run at a time
-sim.out <- data.frame()
 
 trans_prob.base2 <- 0.115; trans_prob.base1 <- trans_prob.base2*1.1
 sim.param <- expand.grid(eff.multi=c(0.8, 1, 1.1, 1.2))

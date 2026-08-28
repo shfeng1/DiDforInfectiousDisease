@@ -4,7 +4,6 @@ source("./global_options.R")
 source("./1a_Scripts/0_Misspecify.R")
 output.file <- "./4_Output/misspecify_GI.rds"
 nsim <- 1000 # 1K run at a time
-sim.out <- data.frame()
 
 # translate Geometric(1/inf_mean) to a Discrete Gamma:
 mean_true <- std_true <- 1 / -log(1 - 1/inf_mean)

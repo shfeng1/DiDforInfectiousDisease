@@ -4,7 +4,6 @@ source("./global_options.R")
 source("./1a_Scripts/0_SEIR.R")
 output.file <- "./4_Output/SEIR_long_time.rds"
 nsim <- 100 # takes about 3 hours to run 100
-sim.out <- data.frame()
 
 N <- 83; N1 <- 15; pop.size <- 2e4; seed <- 60 # Kansas example has 83 counties with 15 treated; average pop size is 23539
 T0 <- 5*7; T1 <- 20*7; burnin <- 2*7 # T0+burnin = 7 weeks, T1 = 20 weeks
