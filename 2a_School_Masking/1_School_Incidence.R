@@ -1,8 +1,8 @@
 rm(list=ls())
 here::i_am("2a_School_Masking/1_School_Incidence.R")
 source("./global_options.R")
-source("./1a_Scripts/0_boottest.glm.R")
-source("./1a_Scripts/0_Run_Estimators.R")
+source("./1a_Scripts/0_boottest.glm.R", local=TRUE)
+source("./2a_School_Masking/0_School_AME_Helpers.R", local=TRUE)
 ############################################# MAKE DATA ##############################################
 data_in <- readRDS("./0_Data/School_Cleaned.rds") %>% filter(week <= 40) %>%
   group_by(OrgCode, OrgName) %>% arrange(week) %>%
@@ -21,7 +21,7 @@ if (is.null(weightsname)) { # check if weights are specified
   wt <- data_in[[weightsname]]
 }
 
-df_sunab <- data.frame(cbind(ID, group, time, y, wt)) %>% 
+df_sunab <- data.frame(cbind(ID, group, time, y, wt)) %>%
   mutate(group = ifelse(group==0, 10000, group),
          time_to_trt = ifelse(group==10000, -1, time - group))
 
@@ -31,36 +31,52 @@ fit <- feols(y ~ sunab(group, time, ref.c = 10000) | ID + time, weights = df_sun
 time_to_trt <- as.numeric(sapply(names(coef(fit)), function(var) substr(var, 7, nchar(var))))
 ATT_gt <- boottest.glm(fit, gweight=gweight, model="inc")
 rownames(ATT_gt) <- time_to_trt
-ATT <- colSums(ATT_gt[rownames(ATT_gt) >= 0,])
-
-print("------------------ INCIDENCE MODEL ------------------")
-print(paste0("15-week treatment effect and AME are the same: ", round(mean(ATT), 1), " with CI: (",  
-             round(quantile(ATT, 0.025), 1), ", ", round(quantile(ATT, 0.975), 1), ")"))
+ATT_boot <- colSums(ATT_gt[rownames(ATT_gt) >= 0,])
+ATT <- sum(coef(fit)[time_to_trt >= 0])
+inc_effect_15 <- c(
+  estimate=ATT,
+  lower=unname(quantile(ATT_boot, 0.025)),
+  upper=unname(quantile(ATT_boot, 0.975))
+)
+inc_AME_15 <- inc_effect_15
 ##################################################   KEEP 5 WEEKS POST INTERVENTION
-ATT <- colSums(ATT_gt[rownames(ATT_gt) %in% (0:4),])
-
-print(paste0("5-week treatment effect and AME are the same: ", round(mean(ATT), 1), " with CI: (",  
-             round(quantile(ATT, 0.025), 1), ", ", round(quantile(ATT, 0.975), 1), ")"))
+ATT_boot <- colSums(ATT_gt[rownames(ATT_gt) %in% (0:4),])
+ATT <- sum(coef(fit)[time_to_trt %in% (0:4)])
+inc_effect_5 <- c(
+  estimate=ATT,
+  lower=unname(quantile(ATT_boot, 0.025)),
+  upper=unname(quantile(ATT_boot, 0.975))
+)
+inc_AME_5 <- inc_effect_5
 ############################################### LOG INC ##############################################
 fit <- fepois(y ~ sunab(group, time, ref.c = 10000) | ID + time, weights = df_sunab$wt, data = df_sunab)
 time_to_trt <- as.numeric(sapply(names(coef(fit)), function(var) substr(var, 7, nchar(var))))
 ATT_gt <- boottest.glm(fit, gweight=gweight, model="loginc")
 rownames(ATT_gt) <- time_to_trt
-ATT <- colMeans(ATT_gt[rownames(ATT_gt) >= 0,])
-
-print("------------------ LOG INCIDENCE MODEL ------------------")
-print(paste0("15-week treatment effect: ", round(exp(mean(ATT)), 2), " with CI: (",  
-             round(exp(quantile(ATT, 0.025)), 2), ", ", round(exp(quantile(ATT, 0.975)), 2), ")"))
-
-AMEs <- apply(ATT_gt, 2, function(coef) loginc_AME(coef))
-print(paste0("15-week AME: ", round(loginc_AME(rowMeans(ATT_gt)), 1), " with CI: (",  
-             round(quantile(AMEs, 0.025), 1), ", ", round(quantile(AMEs, 0.975), 1), ")"))
+ATT_boot <- colMeans(ATT_gt[rownames(ATT_gt) >= 0,])
+ATT <- mean(coef(fit)[time_to_trt >= 0])
+AMEs <- apply(ATT_gt, 2, function(coef) school_loginc_ame(coef, time_to_trt, df_sunab))
+loginc_effect_15 <- c(
+  estimate=exp(ATT),
+  lower=unname(exp(quantile(ATT_boot, 0.025))),
+  upper=unname(exp(quantile(ATT_boot, 0.975)))
+)
+loginc_AME_15 <- c(
+  estimate=school_loginc_ame(coef(fit), time_to_trt, df_sunab),
+  lower=unname(quantile(AMEs, 0.025)),
+  upper=unname(quantile(AMEs, 0.975))
+)
 ##################################################   KEEP 5 WEEKS POST INTERVENTION
-ATT <- colMeans(ATT_gt[rownames(ATT_gt) %in% (0:4),])
-
-print(paste0("5-week treatment effect: ", round(exp(mean(ATT)), 2), " with CI: (",  
-             round(exp(quantile(ATT, 0.025)), 2), ", ", round(exp(quantile(ATT, 0.975)), 2), ")"))
-
-AMEs <- apply(ATT_gt, 2, function(coef) loginc_AME(coef, c(0:4)))
-print(paste0("5-week AME: ", round(loginc_AME(coef=rowMeans(ATT_gt), subset=c(0:4)), 1), " with CI: (",  
-             round(quantile(AMEs, 0.025), 1), ", ", round(quantile(AMEs, 0.975), 1), ")"))
+ATT_boot <- colMeans(ATT_gt[rownames(ATT_gt) %in% (0:4),])
+ATT <- mean(coef(fit)[time_to_trt %in% (0:4)])
+AMEs <- apply(ATT_gt, 2, function(coef) school_loginc_ame(coef, time_to_trt, df_sunab, 0:4))
+loginc_effect_5 <- c(
+  estimate=exp(ATT),
+  lower=unname(exp(quantile(ATT_boot, 0.025))),
+  upper=unname(exp(quantile(ATT_boot, 0.975)))
+)
+loginc_AME_5 <- c(
+  estimate=school_loginc_ame(coef(fit), time_to_trt, df_sunab, 0:4),
+  lower=unname(quantile(AMEs, 0.025)),
+  upper=unname(quantile(AMEs, 0.975))
+)

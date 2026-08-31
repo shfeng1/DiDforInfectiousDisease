@@ -159,49 +159,60 @@ construct_observed_difference_counterfactual <- function(observed, modeled_treat
   observed + (modeled_untreated-modeled_treated)
 }
 
-run_inc <- function(data.in, parallel.id) {
+run_inc <- function(data.in, parallel.id, calculate_p=TRUE) {
   inc.fit <- lm(inc ~ -1 + factor(week) + factor(unit) + factor(trt_post), data=data.in)
-  command <- "set matsize 1000
-    glm inc i.unit i.week i.trt_post, family(gaussian) link(identity)
-    boottest 1.trt_post, cluster(unit) reps(10000) quietly
-    gen p = r(p) in 1
-    keep p
-    keep if _n==1"
-  stata.out <- my_RStata(src=command, data.in=data.in, data.out=TRUE, stata.echo=FALSE, id=parallel.id)
-  out <- data.frame(model="inc", effect=tail(coef(inc.fit),1), p=stata.out$p,
+  p <- NA
+  if (calculate_p) {
+    command <- "set matsize 1000
+      glm inc i.unit i.week i.trt_post, family(gaussian) link(identity)
+      boottest 1.trt_post, cluster(unit) reps(10000) quietly
+      gen p = r(p) in 1
+      keep p
+      keep if _n==1"
+    p <- my_RStata(src=command, data.in=data.in, data.out=TRUE,
+                   stata.echo=FALSE, id=parallel.id)$p
+  }
+  out <- data.frame(model="inc", effect=tail(coef(inc.fit),1), p=p,
                     AME=tail(coef(inc.fit),1), AME.adj1=NA, AME.adj2=NA)
   rownames(out) <- NULL
   out
 }
 
-run_loginc <- function(data.in, parallel.id) {
+run_loginc <- function(data.in, parallel.id, calculate_p=TRUE) {
   loginc.fit <- glm(inc ~ -1 + factor(week) + factor(unit) + factor(trt_post), family=poisson, data=data.in)
-  command <- "set matsize 1000
-    glm inc i.unit i.week 1.trt_post, family(poisson) link(log)
-    boottest 1.trt_post, cluster(unit) reps(10000) quietly
-    gen p = r(p) in 1
-    keep p
-    keep if _n==1"
-  stata.out <- my_RStata(src=command, data.in=data.in, data.out=TRUE, stata.echo=FALSE, id=parallel.id)
+  p <- NA
+  if (calculate_p) {
+    command <- "set matsize 1000
+      glm inc i.unit i.week 1.trt_post, family(poisson) link(log)
+      boottest 1.trt_post, cluster(unit) reps(10000) quietly
+      gen p = r(p) in 1
+      keep p
+      keep if _n==1"
+    p <- my_RStata(src=command, data.in=data.in, data.out=TRUE,
+                   stata.echo=FALSE, id=parallel.id)$p
+  }
   data.untrt <- data.in %>% filter(trt.unit) %>% mutate(trt_post=FALSE)
   data.untrt$loginc_fit <- predict(loginc.fit, newdata=data.untrt, type="response")
-  out <- data.frame(model="loginc", effect=exp(tail(coef(loginc.fit),1)), p=stata.out$p,
+  out <- data.frame(model="loginc", effect=exp(tail(coef(loginc.fit),1)), p=p,
                     AME=mean(data.in$inc[data.in$trt_post])-mean(data.untrt$loginc_fit[data.untrt$trt.time]),
                     AME.adj1=NA, AME.adj2=NA)
   rownames(out) <- NULL
   out
 }
 
-run_growth <- function(data.in, parallel.id=0, trt.IDs=1:N1, coef=NULL) {
+run_growth <- function(data.in, parallel.id=0, trt.IDs=1:N1, coef=NULL,
+                       calculate_p=TRUE) {
   growth.fit <- glm(growth ~ -1 + factor(week) + factor(unit) + factor(trt_post), family=poisson, data=data.in)
-  if (is.null(coef)) {
+  p <- NA
+  if (is.null(coef) && calculate_p) {
     command <- "set matsize 1000
       glm growth i.unit i.week 1.trt_post, family(poisson) link(log)
       boottest 1.trt_post, cluster(unit) reps(10000) quietly
       gen p = r(p) in 1
       keep p
       keep if _n==1"
-    stata.out <- my_RStata(src=command, data.in=data.in, data.out=TRUE, stata.echo=FALSE, id=parallel.id)
+    p <- my_RStata(src=command, data.in=data.in, data.out=TRUE,
+                   stata.echo=FALSE, id=parallel.id)$p
   }
   data.untrt <- data.in %>% filter(trt.unit) %>% mutate(trt_post=FALSE)
   data.untrt$growth_fit <- if (is.null(coef)) predict(growth.fit, newdata=data.untrt, type="response") else data.untrt$growth/exp(coef)
@@ -216,9 +227,9 @@ run_growth <- function(data.in, parallel.id=0, trt.IDs=1:N1, coef=NULL) {
         growth.df$growth_fit[growth.df$unit==unit & growth.df$week==time]
     }
   }
-  data.untrt$Y.untrt.growth <- NA_real_
+  data.untrt$Y.untrt.growth <- NA
   data.untrt$Y.untrt.growth[data.untrt$week>=T0/agg] <- growth.df$Y.untrt.growth
-  data.untrt$Y.untrt.growth.adj1 <- data.untrt$Y.untrt.growth.adj2 <- NA_real_
+  data.untrt$Y.untrt.growth.adj1 <- data.untrt$Y.untrt.growth.adj2 <- NA
   for (i in trt.IDs) {
     for (time in (T0/agg+1):((T0+T1)/agg)) {
       idx <- data.untrt$unit==i & data.untrt$week==time
@@ -232,28 +243,30 @@ run_growth <- function(data.in, parallel.id=0, trt.IDs=1:N1, coef=NULL) {
   ame1 <- mean(data.untrt$inc[post] - data.untrt$Y.untrt.growth.adj1[post])
   ame2 <- mean(data.untrt$inc[post] - data.untrt$Y.untrt.growth.adj2[post])
   if (is.null(coef)) {
-    data.frame(model="growth", effect=exp(tail(stats::coef(growth.fit),1)), p=stata.out$p,
+    data.frame(model="growth", effect=exp(tail(stats::coef(growth.fit),1)), p=p,
                AME=ame, AME.adj1=ame1, AME.adj2=ame2)
   } else {
     data.frame(model="growth", effect=exp(coef), AME=ame, AME.adj1=ame1, AME.adj2=ame2)
   }
 }
 
-run_Rt <- function(data.in, out.df, type="est", dgp, inf_mean, delta=NULL,
+run_Rt <- function(data.in, out.df, dgp, inf_mean, delta=NULL,
                    inf_var=NULL, trt.IDs=1:N1, coef=NULL, parallel.id=0,
                    unit_population=NULL, incidence_scale=NULL,
                    incidence_aggregation="sum", simulate_from_trt=FALSE,
-                   difference=FALSE) {
-  if (type=="wt") data.in$Rt <- data.in$R_wt else data.in$Rt <- data.in$R_est
+                   difference=FALSE, calculate_p=TRUE) {
+  data.in$Rt <- data.in$Rt_exposure
   Rt.fit <- glm(Rt ~ -1 + factor(week) + factor(unit) + factor(trt_post), family=poisson, data=data.in)
-  if (is.null(coef)) {
+  p <- NA
+  if (is.null(coef) && calculate_p) {
     command <- "set matsize 1000
       glm Rt i.unit i.week 1.trt_post, family(poisson) link(log)
       boottest 1.trt_post, cluster(unit) reps(10000) quietly
       gen p = r(p) in 1
       keep p
       keep if _n==1"
-    stata.out <- my_RStata(src=command, data.in=data.in, data.out=TRUE, stata.echo=FALSE, id=parallel.id)
+    p <- my_RStata(src=command, data.in=data.in, data.out=TRUE,
+                   stata.echo=FALSE, id=parallel.id)$p
   }
   data.untrt <- data.in %>% filter(trt.unit) %>% mutate(trt_post=FALSE)
   data.untrt$Rt_fit <- if (is.null(coef)) predict(Rt.fit, newdata=data.untrt, type="response") else data.untrt$Rt/exp(coef)
@@ -306,7 +319,7 @@ run_Rt <- function(data.in, out.df, type="est", dgp, inf_mean, delta=NULL,
     post <- data.untrt$trt.time
   }
 
-  data.untrt$Y.untrt.Rt.adj1 <- data.untrt$Y.untrt.Rt.adj2 <- NA_real_
+  data.untrt$Y.untrt.Rt.adj1 <- data.untrt$Y.untrt.Rt.adj2 <- NA
   for (i in trt.IDs) {
     for (time in (T0/agg+1):((T0+T1)/agg)) {
       idx <- as.character(data.untrt$unit)==as.character(i) & data.untrt$week==time
@@ -320,10 +333,10 @@ run_Rt <- function(data.in, out.df, type="est", dgp, inf_mean, delta=NULL,
   ame1 <- mean(data.untrt$inc[post] - data.untrt$Y.untrt.Rt.adj1[post])
   ame2 <- mean(data.untrt$inc[post] - data.untrt$Y.untrt.Rt.adj2[post])
   if (is.null(coef)) {
-    data.frame(model=paste0("Rt_",type), effect=exp(tail(stats::coef(Rt.fit),1)), p=stata.out$p,
+    data.frame(model="Rt_exposure", effect=exp(tail(stats::coef(Rt.fit),1)), p=p,
                AME=ame, AME.adj1=ame1, AME.adj2=ame2)
   } else {
-    data.frame(model=paste0("Rt_",type), effect=exp(coef),
+    data.frame(model="Rt_exposure", effect=exp(coef),
                AME=ame, AME.adj1=ame1, AME.adj2=ame2)
   }
 }
@@ -332,31 +345,33 @@ run_beta <- function(data.in, out.df, dgp, inf_mean, delta=NULL, inf_var=NULL,
                      trt.IDs=1:N1, coef=NULL, parallel.id=0,
                      unit_population=NULL, incidence_scale=NULL,
                      incidence_aggregation="sum", simulate_from_trt=FALSE,
-                     difference=FALSE) {
-  beta.fit <- glm(beta_est ~ -1 + factor(week) + factor(unit) + factor(trt_post), family=poisson, data=data.in)
-  if (is.null(coef)) {
+                     difference=FALSE, calculate_p=TRUE) {
+  beta.fit <- glm(beta_exposure ~ -1 + factor(week) + factor(unit) + factor(trt_post), family=poisson, data=data.in)
+  p <- NA
+  if (is.null(coef) && calculate_p) {
     command <- "set matsize 600
-      glm beta_est i.unit i.week 1.trt_post, family(poisson) link(log)
+      glm beta_exposure i.unit i.week 1.trt_post, family(poisson) link(log)
       boottest 1.trt_post, cluster(unit) reps(10000) quietly
       gen p = r(p) in 1
       keep p
       keep if _n==1"
-    stata.out <- my_RStata(src=command, data.in=data.in, data.out=TRUE, stata.echo=FALSE, id=parallel.id)
+    p <- my_RStata(src=command, data.in=data.in, data.out=TRUE,
+                   stata.echo=FALSE, id=parallel.id)$p
   }
   data.untrt <- data.in %>% filter(trt.unit) %>% mutate(trt_post=FALSE)
-  data.untrt$beta_fit <- if (is.null(coef)) predict(beta.fit, newdata=data.untrt, type="response") else data.untrt$beta_est/exp(coef)
+  data.untrt$beta_fit <- if (is.null(coef)) predict(beta.fit, newdata=data.untrt, type="response") else data.untrt$beta_exposure/exp(coef)
   data.deagg <- out.df %>%
     filter(unit %in% trt.IDs, t<=T0+T1+burnin) %>%
     mutate(week=ceiling(t/agg), unit=factor(unit)) %>%
-    merge(data.untrt %>% dplyr::select(unit, week, beta_est, beta_fit) %>% mutate(week=week+burnin/agg),
+    merge(data.untrt %>% dplyr::select(unit, week, beta_exposure, beta_fit) %>% mutate(week=week+burnin/agg),
           by=c("unit","week"), all.x=TRUE) %>%
-    mutate(trt.time=t>(T0+burnin), beta_fit=ifelse(trt.time, beta_fit, beta_est)) %>%
+    mutate(trt.time=t>(T0+burnin), beta_fit=ifelse(trt.time, beta_fit, beta_exposure)) %>%
     filter(t>burnin)
 
   if (difference) {
     paired <- lapply(trt.IDs, function(ind) {
       pop.ind <- get_unit_population(ind, unit_population)
-      spec <- prepare_ame_simulation_window(data.deagg, ind, "beta_fit", dgp, simulate_from_trt, "beta_est")
+      spec <- prepare_ame_simulation_window(data.deagg, ind, "beta_fit", dgp, simulate_from_trt, "beta_exposure")
       paths <- simulate_paired_ame_trajectories(spec, dgp, pop.ind, inf_mean, delta, inf_var)
       list(
         trt=aggregate_simulated_incidence(paths$treated, incidence_aggregation=incidence_aggregation,
@@ -393,7 +408,7 @@ run_beta <- function(data.in, out.df, dgp, inf_mean, delta=NULL, inf_var=NULL,
     post <- data.untrt$trt.time
   }
 
-  data.untrt$Y.untrt.beta.adj1 <- data.untrt$Y.untrt.beta.adj2 <- NA_real_
+  data.untrt$Y.untrt.beta.adj1 <- data.untrt$Y.untrt.beta.adj2 <- NA
   for (i in trt.IDs) {
     for (time in (T0/agg+1):((T0+T1)/agg)) {
       idx <- as.character(data.untrt$unit)==as.character(i) & data.untrt$week==time
@@ -407,10 +422,10 @@ run_beta <- function(data.in, out.df, dgp, inf_mean, delta=NULL, inf_var=NULL,
   ame1 <- mean(data.untrt$inc[post] - data.untrt$Y.untrt.beta.adj1[post])
   ame2 <- mean(data.untrt$inc[post] - data.untrt$Y.untrt.beta.adj2[post])
   if (is.null(coef)) {
-    data.frame(model="beta", effect=exp(tail(stats::coef(beta.fit),1)), p=stata.out$p,
+    data.frame(model="beta_exposure", effect=exp(tail(stats::coef(beta.fit),1)), p=p,
                AME=ame, AME.adj1=ame1, AME.adj2=ame2)
   } else {
-    data.frame(model="beta", effect=exp(coef),
+    data.frame(model="beta_exposure", effect=exp(coef),
                AME=ame, AME.adj1=ame1, AME.adj2=ame2)
   }
 }
@@ -434,89 +449,4 @@ run_true <- function(out.df, trans_prob.base1, dgp, trt.IDs=1:N1) {
     summarise(inc = sum(inc))
   Y.untrt.true <- mean(true.untrt$inc[true.untrt$week > (T0/agg)])
   return(Y.untrt.true)
-}
-
-# Helper functions for School Masking example
-loginc_AME <- function(coef, subset=NULL) {
-  if (is.null(subset)) {
-    ind <- time_to_trt >= 0
-  } else {
-    ind <- time_to_trt %in% subset
-  }
-  
-  ATT <- mean(coef[ind])
-  
-  loginc.obs <- df_sunab %>%
-    mutate(time_to_trt = time - group)
-  
-  if (is.null(subset)) {
-    loginc.obs <- loginc.obs %>%
-      filter(time_to_trt >= 0)
-  } else {
-    loginc.obs <- loginc.obs %>%
-      filter(time_to_trt %in% subset)
-  }
-  
-  loginc.obs <- loginc.obs %>%
-    mutate(
-      y.ctl = y / exp(ATT),
-      diff = y - y.ctl
-    ) %>%
-    group_by(time_to_trt) %>%
-    summarise(diff = mean(diff), .groups = "drop")
-  
-  sum(loginc.obs$diff)
-}
-
-growth_AME <- function(coef, subset=NULL) {
-  if (is.null(subset)) {
-    ATT <- mean(coef[time_to_trt >= 0])
-  } else {
-    ATT <- mean(coef[time_to_trt %in% subset])
-  }
-  
-  df.all <- df_sunab %>%
-    mutate(time_to_trt = time-group)
-  
-  df <- df.all %>%
-    filter(time_to_trt >= -1) %>%
-    mutate(
-      coef = ifelse(time_to_trt == -1, 0, ATT),
-      growth.ctl = log(y) - coef,
-      Pos.ctl = NA
-    )
-  
-  for (unit in unique(df$ID)) {
-    for (time in sort(unique(df$time[df$ID==unit]))) {
-      
-      if ((time+1) == unique(df$group[df$ID==unit])) {
-        
-        # Last observed period before treatment
-        df$Pos.ctl[df$ID==unit & df$time==time] <-
-          df$PosPer1K[df$ID==unit & df$time==time]
-        
-      } else {
-        
-        time.ind <- ifelse(
-          nrow(df[df$ID==unit & df$time==time-1,]) == 0,
-          2, 1
-        )
-        
-        df$Pos.ctl[df$ID==unit & df$time==time] <-
-          df$Pos.ctl[df$ID==unit & df$time==time-time.ind] *
-          exp(df$growth.ctl[df$ID==unit & df$time==time])
-      }
-    }
-  }
-  
-  if (!is.null(subset))
-    df <- df %>% filter(time_to_trt %in% subset)
-  
-  df <- df %>%
-    filter(time >= group) %>%
-    mutate(diff=PosPer1K-Pos.ctl) %>%
-    group_by(ID) %>%
-    summarise(diff=sum(diff), .groups="drop")
-  
-  mean(df$diff)
 }

@@ -1,8 +1,4 @@
-# Helpers used to initialize the Kansas SEIR AME simulation on the observed
-# incidence scale.  The AME outcome is the reported seven-day-average case rate,
-# whereas COVIDestim infections are latent infections.  Initializing E and I
-# with the latent infection flow therefore puts simulated incidence on a
-# different scale from the observed outcome.
+# Reconstruct Kansas SEIR states on the observed incidence scale.
 
 kansas_unit_id <- function(x) {
   if (is.factor(x)) return(as.character(x))
@@ -34,8 +30,7 @@ reconstruct_kansas_case_states <- function(data, units, start_date, end_date,
     mutate(
       .case_count=pmax(as.numeric(stnnewcases7davg), 0) *
         as.numeric(coestpop2019) / incidence_scale,
-      # Incidence on day t+1 is E_t/delta.  Thus the exposed state at the end of day t is 
-      # delta times the next day's observed incidence.
+      # E_t is delta times incidence at t+1.
       E=delta * lead(.case_count),
       I={
         z <- numeric(n())

@@ -1,24 +1,18 @@
-# rm(list=ls())
 here::i_am("1b_Summarize/2a_SIR_summ.R")
 source("./global_options.R")
 source("./1a_Scripts/0_Format_Table.R")
 
+model.labels <- c(inc="incidence", loginc="log incidence", growth="log growth",
+                  Rt_exposure="Rt", beta_exposure="\u03B2t")
+model.colors <- setNames(pal[c(1, 2, 3, 5, 6)], unname(model.labels))
+
 p_out <- readRDS("4_Output/SIR_base_case.rds") %>%
-  mutate(model.lab = case_when(model=="inc" ~ "incidence", 
-                               model=="loginc" ~ "log incidence",
-                               model=="growth" ~ "log growth",
-                               model=="Rt_wt" ~ "Rt (Wallinga Teunis)",
-                               model=="Rt_est" ~ "Rt (Instantaneous Estimation)",
-                               model=="beta" ~ "\u03B2t (Instantaneous Estimation)"),
-         model.lab = factor(model.lab, levels = c("incidence", "log incidence", "log growth",
-                                                  "Rt (Wallinga Teunis)", "Rt (Instantaneous Estimation)",
-                                                  "\u03B2t (Instantaneous Estimation)")))
+  filter(model %in% model.list) %>%
+  mutate(model.lab=factor(unname(model.labels[model]), levels=unname(model.labels)))
 
 eff.truth <- readRDS("./4_Output/SIR_RR.rds") %>%
-  filter(model != "Rt_wt", !is.na(eff.true)) %>%
   group_by(trans_prob.base1, trans_prob.base2, eff.multi, model) %>%
-  summarise(eff.true = mean(eff.true)) %>%
-  mutate(model = ifelse(model=="Rt_cohort", "Rt_wt", model))
+  summarise(eff.true = mean(eff.true), nsim = n())
 ##############################################################################################################################
 # Power / type I error rate
 power.df1 <- p_out %>%
@@ -35,28 +29,24 @@ bias.df <- p_out %>%
   data.frame() %>%
   mutate(trans_prob.base1=as.character(trans_prob.base1), trans_prob.base2=as.character(trans_prob.base2)) %>%
   group_by(pop.size, trans_prob.base1, trans_prob.base2, eff.multi) %>%
-  mutate(AME.true = Y.trt - Y.untrt.true, AME.fit = AME, AME.adj = AME.adj2,
+  mutate(AME.true = Y.trt - Y.untrt.true, AME.fit = AME,
          eff.true = ifelse(model=="inc", AME.true, eff.multi))
 ##############################################################################################################################
 bias.AME1 <- bias.df %>%
   filter(trans_prob.base1 == trans_prob.base2) %>%
   group_by(pop.size, trans_prob.base1, trans_prob.base2, model, model.lab, eff.multi) %>%
   summarise(nsim = n(), Y.untrt.true = mean(Y.untrt.true), AME.true = mean(AME.true), 
-            AME.fit = mean(AME.fit), AME.adj = mean(AME.adj, na.rm = T)) %>%
+            AME.fit = mean(AME.fit)) %>%
   mutate(bias.fit = AME.fit - AME.true,
-         bias.adj = ifelse(model %in% c("inc", "loginc"), bias.fit, AME.adj - AME.true),
-         bias.fit.pct = bias.fit / Y.untrt.true,
-         bias.adj.pct = bias.adj / Y.untrt.true)
+         bias.fit.pct = bias.fit / Y.untrt.true)
 
 bias.AME2 <- bias.df %>%
   filter(trans_prob.base1 > trans_prob.base2) %>%
   group_by(pop.size, trans_prob.base1, trans_prob.base2, model, model.lab, eff.multi) %>%
   summarise(nsim = n(), Y.untrt.true = mean(Y.untrt.true), AME.true = mean(AME.true), 
-            AME.fit = mean(AME.fit), AME.adj = mean(AME.adj, na.rm = T)) %>%
+            AME.fit = mean(AME.fit)) %>%
   mutate(bias.fit = AME.fit - AME.true,
-         bias.adj = ifelse(model %in% c("inc", "loginc"), bias.fit, AME.adj - AME.true),
-         bias.fit.pct = bias.fit / Y.untrt.true,
-         bias.adj.pct = bias.adj / Y.untrt.true)
+         bias.fit.pct = bias.fit / Y.untrt.true)
 ##############################################################################################################################
 bias.original1 <- bias.df %>% 
   filter(trans_prob.base1 == trans_prob.base2) %>%
@@ -76,69 +66,66 @@ bias.original2$eff.true[bias.original2$model=="inc"] <- bias.AME2$AME.true[bias.
 bias.original2$eff.bias <- bias.original2$eff - bias.original2$eff.true
 bias.original2$eff.bias.pct <- bias.original2$eff.bias / bias.original2$eff.true
 ##############################################################################################################################
-p.power1 <- ggplot(power.df1 %>% filter(! model %in% c("true")), aes(eff.multi, p, col=model.lab)) +
+p.power1 <- ggplot(power.df1, aes(eff.multi, p, col=model.lab)) +
   geom_point() +
   geom_line() +
   theme_bw() +
   geom_hline(yintercept = 5, lty = "dashed") +
   scale_y_continuous(limit=c(0, 100)) +
-  scale_color_manual(name = "", values = pal) +
+  scale_color_manual(name = "", values = model.colors) +
   labs(x = "", y = expression("P(reject"~H[0]*")")) +
   theme(legend.position = "bottom",
         panel.grid.minor = element_blank())
 
-p.power2 <- ggplot(power.df2 %>% filter(! model %in% c("true"),
-                                        (model =="beta") | (eff.multi==1)), 
+p.power2 <- ggplot(power.df2 %>% filter(model=="beta_exposure" | eff.multi==1),
                    aes(eff.multi, p, col=model.lab)) +
   geom_point() +
   geom_line() +
   theme_bw() +
   geom_hline(yintercept = 5, lty = "dashed") +
   scale_y_continuous(limit=c(0, 100)) +
-  scale_color_manual(name = "", values = pal) +
+  scale_color_manual(name = "", values = model.colors) +
   labs(x = "", y = expression("P(reject"~H[0]*")")) +
   theme(legend.position = "bottom",
         panel.grid.minor = element_blank())
 
-p.bias.eff1 <- ggplot(bias.original1 %>% filter(! model %in% c("true", "inc")), 
+p.bias.eff1 <- ggplot(bias.original1 %>% filter(model!="inc"),
                       aes(eff.multi, eff.bias.pct*100, col=model.lab)) +
   geom_point() +
   geom_line() +
   theme_bw() +
   labs(x = "", y = "Bias in RR (%)") +
   scale_y_continuous(limit=c(-40, 40), breaks = seq(-40, 40, 20)) +
-  scale_color_manual(name = "", values = pal[2:length(pal)]) +
+  scale_color_manual(name = "", values = model.colors) +
   theme(legend.position = "bottom",
         panel.grid.minor = element_blank())
 
-p.bias.eff2 <- ggplot(bias.original2 %>% filter(model=="beta"), aes(eff.multi, eff.bias.pct*100)) +
-  geom_point(col=pal[length(pal)]) +
-  geom_line(col=pal[length(pal)]) +
+p.bias.eff2 <- ggplot(bias.original2 %>% filter(model=="beta_exposure"), aes(eff.multi, eff.bias.pct*100)) +
+  geom_point(col=model.colors[["\u03B2t"]]) +
+  geom_line(col=model.colors[["\u03B2t"]]) +
   theme_bw() +
   labs(x = "", y = "Bias in RR (%)") +
   scale_y_continuous(limit=c(-40, 40), breaks = seq(-40, 40, 20)) +
-  scale_color_manual(name = "", values = pal) +
   theme(legend.position = "bottom",
         panel.grid.minor = element_blank())
 
 # benchmarking against what % of the total case (infection) burden
-p.bias.AME1 <- ggplot(bias.AME1 %>% filter(! model %in% c("true")), aes(eff.multi, bias.adj.pct*100, col=model.lab)) +
+p.bias.AME1 <- ggplot(bias.AME1, aes(eff.multi, bias.fit.pct*100, col=model.lab)) +
   geom_point() +
   geom_line() +
   theme_bw() +
   labs(x = "", y = "Bias in AME as % of post-\nintervention case burden") +
   scale_y_continuous(limit=c(-40, 40), breaks = seq(-40, 40, 20)) +
-  scale_color_manual(name = "", values = pal) +
+  scale_color_manual(name = "", values = model.colors) +
   theme(legend.position = "bottom",
         panel.grid.minor = element_blank())
 
-p.bias.AME2 <- ggplot(bias.AME2 %>% filter(model=="beta"), aes(eff.multi, bias.adj.pct*100)) +
-  geom_point(col=pal[length(pal)]) +
-  geom_line(col=pal[length(pal)]) +
+p.bias.AME2 <- ggplot(bias.AME2 %>% filter(model=="beta_exposure"), aes(eff.multi, bias.fit.pct*100)) +
+  geom_point(col=model.colors[["\u03B2t"]]) +
+  geom_line(col=model.colors[["\u03B2t"]]) +
   theme_bw() +
   labs(x = "", y = "Bias in AME as % of post-\nintervention case burden") +
   scale_y_continuous(limit=c(-40, 40), breaks = seq(-40, 40, 20)) +
-  scale_color_manual(name = "", values = pal) +
   theme(legend.position = "bottom",
         panel.grid.minor = element_blank())
 

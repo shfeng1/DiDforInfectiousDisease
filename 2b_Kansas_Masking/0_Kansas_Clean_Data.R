@@ -40,7 +40,6 @@ df.clean <- df.model %>%
     sus_frac = mean(sus_frac), coestpop2019 = mean(coestpop2019),
     stnnewcases7davg = mean(stnnewcases7davg), growth = mean(growth),
     Rt = mean(Rt),
-    Rt_est = sum(infected_est) / sum(prevalence_lag),
     Rt_exposure = sum(infections) / sum(I_est_lag),
     infections = mean(infections), 
     E_lag = mean(E_lag),
@@ -48,11 +47,9 @@ df.clean <- df.model %>%
     prevalence_lag = mean(prevalence_lag, na.rm = T)
   ) %>%
   dplyr::select(ncounty, week, start_date, dayssincefirstcase, coestpop2019, sus_frac, stnnewcases7davg, 
-                infections, growth, infected_est, prevalence_lag, E_lag, Rt, Rt_est, Rt_exposure) %>%
+                infections, growth, infected_est, prevalence_lag, E_lag, Rt, Rt_exposure) %>%
   ungroup() %>%
-  mutate(Rt_est = ifelse(prevalence_lag==0, NA, Rt_est),
-         beta_exposure = Rt_exposure / sus_frac, # instantaneous Rt on the exposure
-         beta_est = Rt_est / sus_frac, # Rt prevalence-based
+  mutate(beta_exposure = Rt_exposure / sus_frac, # instantaneous Rt on the exposure
          beta = Rt / sus_frac, # Rt cohort
          trt.time = (start_date >= "2020-07-24"),
          trt.unit = (ncounty %in% county.trt),

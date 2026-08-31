@@ -90,97 +90,91 @@ run_SIR_varying <- function(
 
 #### FUNCTION #2 ####
 #### 1) Simulate data according to SIR
-#### 2) Calculate estimators Rt: W-T + prev;  beta_t: (prev Rt) / (St/N)
+#### 2) Calculate estimators Rt_exposure and beta_exposure
 #### 3) Fit DiD models 
 #### 4) Pull point estimates + calculate AME
 #### 5) Bias correction
 SIR_sim <- function(pop.size, N, N1, T0, T1, burnin, seed1, seed2, inf_mean,
                     trans_prob.base1, trans_prob.base2, eff.multi1, parallel.id=0,
-                    simulate_from_trt=FALSE) {
+                    simulate_from_trt=FALSE, end_buffer=NULL,
+                    calculate_p=TRUE, return_data=FALSE) {
+  if (is.null(end_buffer)) end_buffer <- get("end_buffer", envir=.GlobalEnv)
   parallel.id <- paste0("SIR", parallel.id)
-  out.df <- gen_SIR(trans_prob.base1, trans_prob.base2, eff.multi1, inf_mean) # simulate data according SIR
-  data.in <- process_data(out.df, inf_mean, agg, dgp="SIR") # estimate R_t, beta_t, aggregate to weekly level
+  out.df <- gen_SIR(trans_prob.base1, trans_prob.base2, eff.multi1, inf_mean,
+                    N=N, N1=N1, pop.size=pop.size, seed1=seed1, seed2=seed2,
+                    T0=T0, T1=T1, burnin=burnin, end_buffer=end_buffer)
+  data.in <- process_data(out.df, inf_mean, agg, dgp="SIR",
+                          discard_start=burnin, discard_end=end_buffer)
   ################################################################################################################################
-  inc.out <- run_inc(data.in, parallel.id)
-  loginc.out <- run_loginc(data.in, parallel.id)
-  growth.out <- run_growth(data.in, parallel.id)
-  Rt_wt.out <- run_Rt(data.in, out.df, type="wt", dgp="SIR", inf_mean=inf_mean, parallel.id=parallel.id,
-                       simulate_from_trt=simulate_from_trt)
-  Rt_est.out <- run_Rt(data.in, out.df, type="est", dgp="SIR", inf_mean=inf_mean, parallel.id=parallel.id,
-                        simulate_from_trt=simulate_from_trt)
+  inc.out <- run_inc(data.in, parallel.id, calculate_p=calculate_p)
+  loginc.out <- run_loginc(data.in, parallel.id, calculate_p=calculate_p)
+  growth.out <- run_growth(data.in, parallel.id, calculate_p=calculate_p)
+  Rt_exposure.out <- run_Rt(data.in, out.df, dgp="SIR", inf_mean=inf_mean, parallel.id=parallel.id,
+                            calculate_p=calculate_p,
+                            simulate_from_trt=simulate_from_trt)
   beta.out <- run_beta(data.in, out.df, dgp="SIR", inf_mean=inf_mean, parallel.id=parallel.id,
+                       calculate_p=calculate_p,
                        simulate_from_trt=simulate_from_trt)
   Y.untrt.true <- run_true(out.df, trans_prob.base1, dgp="SIR")
   ############################################################################################################################
   # summarize outputs
-  out <- rbind(inc.out, loginc.out, growth.out, Rt_wt.out, Rt_est.out, beta.out) %>% 
+  out <- rbind(inc.out, loginc.out, growth.out, Rt_exposure.out, beta.out) %>%
     mutate(N=N, N1=N1, trans_prob.base1=trans_prob.base1, trans_prob.base2=trans_prob.base2, pop.size=pop.size, seed=seed1,
            eff.multi=eff.multi1, burnin=burnin, T0=T0, T1=T1, 
            S_frac.mean=mean(data.in$S_frac[data.in$trt.time]), S_frac.min=min(data.in$S_frac),
            Y.trt=mean(data.in$inc[data.in$trt_post]), Y.untrt.true=Y.untrt.true)
   # true AME * T1 / pop.size is the effect size as % population
   
-  return(out)
+  if (return_data) return(list(result=out, bootstrap_data=data.in))
+  out
 }
 
 #### FUNCTION #3 ####
 #### 1) Simulate data according to SIR
-#### 2) Calculate estimators Rt: W-T + prev;  beta_t: prev Rt/St/N
+#### 2) Calculate estimators Rt_exposure and beta_exposure
 #### 3) Get p-values from wild score bootstrap
 #### 4) Get p-values from normal-based standard error approach
 inference_sim <- function(pop.size, N, N1, T0, T1, burnin, seed1, seed2,
                           trans_prob.base1, trans_prob.base2, inf_mean,
-                          eff.multi1=1, eff.multi2=1, parallel.id=0) {
+                          eff.multi1=1, eff.multi2=1, parallel.id=0,
+                          end_buffer=NULL, calculate_wild=TRUE,
+                          return_data=FALSE) {
+  if (is.null(end_buffer)) end_buffer <- get("end_buffer", envir=.GlobalEnv)
   parallel.id <- paste0("Inference", parallel.id)
-  out.df <- gen_SIR(trans_prob.base1, trans_prob.base2, eff.multi1, inf_mean)
-  data.in <- process_data(out.df, inf_mean, agg, dgp="SIR")
+  out.df <- gen_SIR(trans_prob.base1, trans_prob.base2, eff.multi1, inf_mean,
+                    N=N, N1=N1, pop.size=pop.size, seed1=seed1, seed2=seed2,
+                    T0=T0, T1=T1, burnin=burnin, end_buffer=end_buffer)
+  data.in <- process_data(out.df, inf_mean, agg, dgp="SIR",
+                          discard_start=burnin, discard_end=end_buffer)
   ############################################################################################################################
   # to get p-value from wild score bootstrap
-  stata.out <- data.frame()
-  for (var in c("inc", "loginc", "growth", "R_wt", "R_est", "beta_est")) {
-    if (var == "inc") {
-      command <- paste0("glm inc i.unit i.week i.trt_post, family(gaussian) link(identity)
-    boottest 1.trt_post, cluster(unit) reps(10000) quietly
-    gen p = r(p) in 1
-    keep p
-    keep if _n==1")
-    } else if (var == "loginc") {
-      command <- paste0("glm inc i.unit i.week 1.trt_post, family(poisson) link(log)
-    boottest 1.trt_post, cluster(unit) reps(10000) quietly
-    gen p = r(p) in 1
-    keep p
-    keep if _n==1")
-    } else {
-      command <- paste0("glm ", var, " i.unit i.week 1.trt_post, family(poisson) link(log)
-    boottest 1.trt_post, cluster(unit) reps(10000) quietly
-    gen p = r(p) in 1
-    keep p
-    keep if _n==1")
-    }
-    out.tmp <- my_RStata(src=command, data.in=data.in, data.out=TRUE, stata.echo=FALSE, id=parallel.id)
-    out.tmp$var <- var
-    stata.out <- rbind(stata.out, out.tmp)
+  models <- c("inc", "loginc", "growth", "Rt_exposure", "beta_exposure")
+  if (calculate_wild) {
+    stata.out <- run_stata_bootstrap_batch(
+      transform(data.in, replication_id=1L), models, parallel.id
+    ) %>% transmute(model, wild=p)
+  } else {
+    stata.out <- data.frame(model=models, wild=NA)
   }
-  stata.out <- rename(stata.out, wild = p)
   ############################################################################################################################
   # to get p-value from normal-based clustered standard error
-  normal.out <- data.frame()
-  for (var in c("inc", "loginc", "growth", "R_wt", "R_est", "beta_est")) {
-    if (var == "inc") {
+  normal.out <- lapply(models, function(model) {
+    if (model == "inc") {
       fit <- lm(inc ~ factor(unit) + factor(week) + trt_post, data = data.in)
-    } else if (var == "loginc") {
+    } else if (model == "loginc") {
       fit <- glm(inc ~ factor(unit) + factor(week) + trt_post, family = poisson(), data = data.in)
     } else {
-      fit <- glm(as.formula(paste0(var, " ~ factor(unit) + factor(week) + trt_post")), family = poisson(), data = data.in)
+      fit <- glm(as.formula(paste0(model, " ~ factor(unit) + factor(week) + trt_post")), family = poisson(), data = data.in)
     }
-    out.tmp <- data.frame(var = var, coef = as.numeric(tail(coef(fit), 1)))
+    out.tmp <- data.frame(model = model, coef = as.numeric(tail(coef(fit), 1)))
     out.tmp$normal <- tail(coeftest(fit, vcov = vcovCL(fit, cluster = ~unit)), 1)[,4] # p-value
-    normal.out <- rbind(normal.out, out.tmp)
-  }
+    out.tmp
+  }) %>% rbindlist()
   out <- merge(stata.out, normal.out) %>%
     mutate(N=N, N1=N1, trans_prob.base1=trans_prob.base1, trans_prob.base2=trans_prob.base2, pop.size=pop.size, seed=seed1, 
            eff.multi=eff.multi1, burnin=burnin, T0=T0, T1=T1)
 
+  if (return_data) return(list(result=out, bootstrap_data=data.in))
   out
 }
 
@@ -193,23 +187,23 @@ SIR_true_eff <- function(trans_prob.base1, trans_prob.base2, eff.multi1) {
   data.in <- process_data(out.df, inf_mean, agg, dgp="SIR")
   
   # Construct the untreated counterfactual
+  total.days <- T0+T1+burnin+end_buffer
   untrt.df <- lapply(1:N1, function(ind) { 
-    run_SIR_varying(pop.size=pop.size, time_steps=(T0+T1+burnin*3), seeds=seed1, inf_mean=inf_mean,
-                    trans_prob = rep(trans_prob.base1, (T0+T1+burnin*3)))}) %>%
+    run_SIR_varying(pop.size=pop.size, time_steps=total.days, seeds=seed1, inf_mean=inf_mean,
+                    trans_prob=rep(trans_prob.base1, total.days))}) %>%
     rbindlist() %>%
-    mutate(unit=rep((1:N1), each=(T0+T1+burnin*3)), initial_seed=seed1)
-  untrt.df$prevalence <- compute_prevalence_seeded(untrt.df, inf_mean, T0+T1+burnin)
-  untrt.df$R_cohort <- compute_Rt_cohort_seeded(untrt.df, inf_mean)
+    mutate(unit=rep((1:N1), each=total.days), initial_seed=seed1)
+  untrt.df$prevalence <- compute_prevalence_seeded(untrt.df, inf_mean, total.days)
   untrt.data.in <- process_data(untrt.df, inf_mean, agg, dgp="SIR")
   
   out <- data.frame(trans_prob.base1=trans_prob.base1, trans_prob.base2=trans_prob.base2,
-                    eff.multi = eff.multi1, model = c("inc", "loginc", "growth", "Rt_wt", "Rt_cohort", "Rt_est", "Rt_true", "beta"),
+                    eff.multi = eff.multi1,
+                    model = c("inc", "loginc", "growth", "Rt_exposure",
+                              "Rt_true", "beta_exposure"),
                     eff.true = c(mean(data.in$inc[data.in$trt_post])-mean(untrt.data.in$inc[untrt.data.in$trt_post]),
                                  mean(data.in$inc[data.in$trt_post])/mean(untrt.data.in$inc[untrt.data.in$trt_post]),
                                  mean(data.in$growth[data.in$trt_post])/mean(untrt.data.in$growth[untrt.data.in$trt_post]),
-                                 mean(data.in$R_wt[data.in$trt_post]) / mean(untrt.data.in$R_wt[untrt.data.in$trt_post]),
-                                 mean(data.in$R_cohort[data.in$trt_post]) / mean(untrt.data.in$R_cohort[untrt.data.in$trt_post]),
-                                 mean(data.in$R_est[data.in$trt_post]) / mean(untrt.data.in$R_est[untrt.data.in$trt_post]),
+                                 mean(data.in$Rt_exposure[data.in$trt_post]) / mean(untrt.data.in$Rt_exposure[untrt.data.in$trt_post]),
                                  mean(data.in$R_true[data.in$trt_post]) / mean(untrt.data.in$R_true[untrt.data.in$trt_post]),
                                  eff.multi1))
   out

@@ -1,14 +1,12 @@
 rm(list=ls())
 here::i_am("2b_Kansas_Masking/2_Kansas_Growth.R")
 source("./global_options.R")
-source("./1a_Scripts/0_Run_Estimators.R")
+source("./1a_Scripts/0_Run_Estimators.R", local=TRUE)
 
 df.in <- readRDS("./0_Data/Kansas_Cleaned.rds")
 county.trt <- sort(unique(df.in$ncounty[df.in$trt_post]))
 growth.fit <- glm(growth ~ -1 + factor(week) + factor(ncounty) + factor(trt_post), data=df.in, family=poisson())
 growth.coef <- tail(growth.fit$coefficients, 1) # -0.08332984
-growth.out <- capture.output(stata("glm growth trt_post i.ncounty i.week, family(poisson) link(log)
-    boottest trt_post, cluster(ncounty) reps(10000)", stata.echo = T, data.in = df.in))
 ####################################################################################################################################
 # Get confidence interval
 growth.p <- data.frame(b0=as.numeric(growth.coef), p=0.1073)
@@ -22,11 +20,12 @@ for (b0 in c(seq(-0.1815, -0.1814, 0.00001), seq(0.0199, 0.0200, 0.00001))) {
 }
 lower.bound <- min(growth.p$b0[growth.p$p >= 0.05 & growth.p$b0<growth.coef])
 upper.bound <- max(growth.p$b0[growth.p$p >= 0.05 & growth.p$b0>growth.coef])
-
-print("------------------ LOG GROWTH MODEL ------------------")
-print(paste0("Treatment effect: ", round(exp(growth.coef), 2), " with CI: (", 
-             round(exp(lower.bound), 2), ", ", round(exp(upper.bound), 2), ")", " and p-value = ",
-             strsplit(trimws(tail(growth.out, 1)), "     ")[[1]][2]))
+growth_effect_20 <- c(
+  estimate=as.numeric(exp(growth.coef)),
+  lower=exp(lower.bound),
+  upper=exp(upper.bound)
+)
+growth_p_20 <- growth.p$p[1]
 ####################################################################################################################################
 ## CONVERT TO AME
 data.model <- df.in %>% mutate(unit = ncounty, inc = infections, S_frac = sus_frac, week = week - min(df.in$week)+1)
@@ -43,7 +42,4 @@ for (coef in growth.AME$coef) {
   growth.AME$AME.adj1[growth.AME$coef==coef] <- mean(tmp$AME.adj1)
   growth.AME$AME.adj2[growth.AME$coef==coef] <- mean(tmp$AME.adj2)
 }
-print(paste0("AME: ", format(round(growth.AME$AME[1], 1), nsmall=1), " with CI: (", 
-             format(round(growth.AME$AME[2], 1), nsmall=1), ", ", 
-             format(round(growth.AME$AME[3], 1), nsmall=1), ")", " and p-value = ",
-             strsplit(trimws(tail(growth.out, 1)), "     ")[[1]][2]))
+growth_AME_20 <- setNames(growth.AME$AME, c("estimate", "lower", "upper"))

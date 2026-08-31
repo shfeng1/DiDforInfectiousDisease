@@ -53,7 +53,7 @@ attgt.glm <- function(yname, tname, idname, gname, weightsname,
   df <- data.frame(ID = ID, group = group, time = time, y = y, wt = wt)
 
   ATT_gt <- matrix(
-    NA_real_,
+    NA,
     nrow = length(glist),
     ncol = length(min(glist):max(time)),
     dimnames = list(as.character(glist), as.character(min(glist):max(time)))
@@ -93,7 +93,7 @@ attgt.glm <- function(yname, tname, idname, gname, weightsname,
 
   out <- vapply(seq_len(ncol(ATT_gt)), function(col) {
     ind <- which(!is.na(ATT_gt[, col]))
-    if (length(ind) == 0) return(NA_real_)
+    if (length(ind) == 0) return(NA)
     as.numeric(weight[ind] %*% ATT_gt[ind, col])
   }, numeric(1))
 

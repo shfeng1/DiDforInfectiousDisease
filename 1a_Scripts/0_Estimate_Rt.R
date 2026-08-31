@@ -38,7 +38,50 @@ compute_infected <- function(delta, ID, inc, time, Ttot) {
   return(infected_est)
 }
 
+compute_simulation_prevalence <- function(inf_mean, ID, inc, time, Ttot) {
+  prevalence <- rep(NA, length(inc))
+  ID.key <- as.character(ID)
+  decay <- 1-1/inf_mean
+  for (i in unique(ID.key)) {
+    idx <- which(ID.key==i)
+    idx <- idx[order(time[idx])]
+    unit.time <- time[idx]
+    first <- match(1L, unit.time)
+    first.inc <- if (is.na(first)) NA else inc[idx[first]]
+    active <- if (is.finite(first.inc)) first.inc else 0
+    if (Ttot>=2L) {
+      for (t in 2:as.integer(Ttot)) {
+        pos <- match(t, unit.time)
+        current <- if (is.na(pos)) NA else inc[idx[pos]]
+        active <- (if (is.finite(current)) current else 0)+decay*active
+        if (!is.na(pos)) prevalence[idx[pos]] <- active
+      }
+    }
+  }
+  prevalence
+}
 
+compute_simulation_infected <- function(delta, ID, inc, time, Ttot) {
+  infected_est <- rep(NA, length(inc))
+  ID.key <- as.character(ID)
+  for (i in unique(ID.key)) {
+    idx <- which(ID.key==i)
+    idx <- idx[order(time[idx])]
+    unit.time <- time[idx]
+    for (t in 2:as.integer(Ttot)) {
+      pos <- match(t, unit.time)
+      if (is.na(pos)) next
+      tomorrow <- match(t+1L, unit.time)
+      inc.today <- inc[idx[pos]]
+      inc.tomorrow <- if (is.na(tomorrow)) NA else inc[idx[tomorrow]]
+      if (!is.finite(inc.today)) inc.today <- 0
+      if (!is.finite(inc.tomorrow)) inc.tomorrow <- 0
+      infected_est[idx[pos]] <- delta*inc.tomorrow-
+        delta*(1-1/delta)*inc.today
+    }
+  }
+  infected_est
+}
 
 # Build the full incidence history used by prevalence, Rt, and beta estimators.
 # The simulation functions return only observations after the initial state, so
@@ -55,7 +98,7 @@ build_seeded_incidence_history <- function(out.df) {
     group_by(.unit_key) %>%
     summarise(initial_seed={
       values <- unique(initial_seed)
-      if (length(values)==1L) values else NA_real_
+      if (length(values)==1L) values else NA
     }, .groups="drop")
 
   if (anyNA(seed.table$initial_seed) || any(!is.finite(seed.table$initial_seed)) ||
@@ -85,7 +128,7 @@ map_seeded_estimate_to_output <- function(out.df, seeded.history, value.column) 
 
 compute_prevalence_seeded <- function(out.df, inf_mean, Ttot) {
   history <- build_seeded_incidence_history(out.df)
-  history$prevalence <- compute_prevalence(
+  history$prevalence <- compute_simulation_prevalence(
     inf_mean=inf_mean, ID=history$.unit_key, inc=history$inc,
     time=history$seeded_t, Ttot=as.integer(Ttot)+1L)
   map_seeded_estimate_to_output(out.df, history, "prevalence")
@@ -93,106 +136,10 @@ compute_prevalence_seeded <- function(out.df, inf_mean, Ttot) {
 
 compute_infected_seeded <- function(out.df, delta, Ttot) {
   history <- build_seeded_incidence_history(out.df)
-  history$infected_est <- compute_infected(
+  history$infected_est <- compute_simulation_infected(
     delta=delta, ID=history$.unit_key, inc=history$inc,
-    time=history$seeded_t, Ttot=as.integer(Ttot)+1L)
+    time=history$seeded_t, Ttot=as.integer(Ttot))
   map_seeded_estimate_to_output(out.df, history, "infected_est")
-}
-
-compute_Rt_cohort_seeded <- function(out.df, inf_mean) {
-  history <- build_seeded_incidence_history(out.df)
-  history$R_cohort <- compute_Rt_cohort(
-    incidence=history$inc, ID=history$.unit_key, inf_mean=inf_mean,
-    Ttot=max(history$seeded_t))
-  map_seeded_estimate_to_output(out.df, history, "R_cohort")
-}
-
-# Wallinga-Teunis is applied after aggregation; add the t=0 seed to the first
-# aggregation period without changing the incidence outcome itself.
-aggregate_seeded_incidence <- function(out.df, agg=7L) {
-  agg <- as.integer(agg)
-  if (length(agg)!=1L || is.na(agg) || agg<1L) stop("agg must be one positive integer.")
-  history <- build_seeded_incidence_history(out.df)
-  unit.map <- out.df %>%
-    transmute(.unit_key=as.character(unit), unit=unit) %>% distinct()
-  if (anyDuplicated(unit.map$.unit_key)) {
-    stop("Each character unit key must map to exactly one original unit value.")
-  }
-  history %>%
-    mutate(week=ifelse(.seed_row, 1L, ceiling(original_t/agg))) %>%
-    group_by(.unit_key, week) %>%
-    summarise(inc_for_Rt=sum(inc), .groups="drop") %>%
-    left_join(unit.map, by=".unit_key") %>%
-    transmute(unit=unit, week=as.integer(week), inc_for_Rt)
-}
-
-# Estimate cohort-based Rt according to Wallinga Teunis
-compute_Rt_wt <- function(inf_mean, ID, inc, agg=7, incubation_mean=0) {
-  serial_interval_mean <- inf_mean + incubation_mean
-  n_periods <- (T0 + T1 + burnin*3) / agg
-  if (length(n_periods)!=1L || !is.finite(n_periods) || n_periods<3 ||
-      abs(n_periods-round(n_periods)) > sqrt(.Machine$double.eps)) {
-    stop("The Wallinga-Teunis analysis period must contain an integer number of at least three aggregation periods.")
-  }
-  n_periods <- as.integer(round(n_periods))
-  t_start <- 2:(n_periods-1L)
-  t_end <- 3:n_periods
-  units <- unique(ID)
-  keep_wt <- vector("list", length(units))
-
-  for (k in seq_along(units)) {
-    i <- units[k]
-    vec <- as.numeric(inc[ID==i])
-    missing_result <- data.table(unit=i, week=t_end, R_wt=NA_real_)
-    if (length(vec)<n_periods || any(!is.finite(vec)) || any(vec<0) || sum(vec, na.rm=TRUE)<=0) {
-      keep_wt[[k]] <- missing_result
-      next
-    }
-    sparse_or_terminally_extinct <- sum(vec>0, na.rm=TRUE)<2L ||
-      !any(is.finite(tail(vec,2L)) & tail(vec,2L)>0)
-    temp_wt <- tryCatch(
-      EpiEstim::wallinga_teunis(
-        vec, method="parametric_si",
-        config=list(t_start=t_start, t_end=t_end, method="parametric_si",
-                    mean_si=serial_interval_mean/agg,
-                    std_si=serial_interval_mean/agg, n_sim=0))$R,
-      error=function(e) {
-        if (sparse_or_terminally_extinct &&
-            identical(conditionMessage(e), "missing value where TRUE/FALSE needed")) return(NULL)
-        stop(e)
-      })
-    if (is.null(temp_wt)) {
-      keep_wt[[k]] <- missing_result
-    } else {
-      keep_wt[[k]] <- temp_wt %>%
-        mutate(week=t_end, unit=i, type="processed", R_wt=`Mean(R)`) %>%
-        dplyr::select(unit, week, R_wt)
-    }
-  }
-  rbindlist(keep_wt, use.names=TRUE, fill=TRUE)
-}
-
-# Estimate the true value for cohort-based Rt
-compute_Rt_cohort <- function(incidence, ID, inf_mean, Ttot) {
-  w <- (1 - 1/inf_mean)^(1:Ttot)
-  w <- w / sum(w)
-  Rt_cohort <- rep(NA_real_, length(incidence))
-  for (i in unique(ID)) {
-    idx <- which(ID==i)
-    n_i <- length(idx)
-    if (n_i < 2L) next
-    for (t in seq_len(n_i-1L)) {
-      current_case <- incidence[idx[t]]
-      future_cases <- incidence[idx[(t+1L):n_i]]
-      weights <- w[seq_along(future_cases)]
-      if (length(current_case)!=1L || !is.finite(current_case) || current_case<=0) {
-        Rt_cohort[idx[t]] <- NA_real_
-      } else {
-        Rt_cohort[idx[t]] <- sum(future_cases*weights, na.rm=TRUE) / current_case
-      }
-    }
-  }
-  Rt_cohort
 }
 
 # simulation error handler
@@ -207,62 +154,86 @@ sim_error <- function(class, message) {
 # 2. Aggregate data to the desired level (default: weekly)
 # 3. Estimate R_t and beta_t
 gen_SIR <- function(trans_prob.base1, trans_prob.base2, eff.multi1, inf_mean,
-                    calculate_prevalence=T, equal_pop=T) {
+                    calculate_prevalence=TRUE, equal_pop=TRUE,
+                    N=NULL, N1=NULL, pop.size=NULL, seed1=NULL, seed2=NULL,
+                    T0=NULL, T1=NULL, burnin=NULL, end_buffer=NULL) {
+  if (is.null(N)) N <- get("N", envir=.GlobalEnv)
+  if (is.null(N1)) N1 <- get("N1", envir=.GlobalEnv)
+  if (is.null(pop.size)) pop.size <- get("pop.size", envir=.GlobalEnv)
+  if (is.null(seed1)) seed1 <- get("seed1", envir=.GlobalEnv)
+  if (is.null(seed2)) seed2 <- get("seed2", envir=.GlobalEnv)
+  if (is.null(T0)) T0 <- get("T0", envir=.GlobalEnv)
+  if (is.null(T1)) T1 <- get("T1", envir=.GlobalEnv)
+  if (is.null(burnin)) burnin <- get("burnin", envir=.GlobalEnv)
+  if (is.null(end_buffer)) end_buffer <- get("end_buffer", envir=.GlobalEnv)
+  total.days <- T0+T1+burnin+end_buffer
   if (equal_pop) pop.size1 <- pop.size2 <- pop.size
   out.sim <- lapply(1:N, function(ind) {
     if (ind %in% (1:N1)) {
       run_SIR_varying(pop.size=pop.size1, seeds=seed1,
-                      time_steps=(T0+T1+burnin*3), inf_mean=inf_mean,
+                      time_steps=total.days, inf_mean=inf_mean,
                       trans_prob=c(rep(trans_prob.base1, T0+burnin),
-                                   rep(trans_prob.base1*eff.multi1, T1+burnin*2)))
+                                   rep(trans_prob.base1*eff.multi1, T1+end_buffer)))
     } else {
       run_SIR_varying(pop.size=pop.size2, seeds=seed2,
-                      time_steps=(T0+T1+burnin*3), inf_mean=inf_mean,
+                      time_steps=total.days, inf_mean=inf_mean,
                       trans_prob=c(rep(trans_prob.base2, T0+burnin),
-                                   rep(trans_prob.base2, T1+burnin*2)))
+                                   rep(trans_prob.base2, T1+end_buffer)))
     }
   })
   out.df <- rbindlist(out.sim) %>%
-    mutate(unit=rep(1:N, each=T0+T1+burnin*3),
+    mutate(unit=rep(1:N, each=total.days),
            initial_seed=ifelse(unit %in% (1:N1), seed1, seed2))
   if (calculate_prevalence) {
-    out.df$prevalence <- compute_prevalence_seeded(out.df, inf_mean, T0+T1+burnin)
-    out.df$R_cohort <- compute_Rt_cohort_seeded(out.df, inf_mean)
+    out.df$prevalence <- compute_prevalence_seeded(out.df, inf_mean, total.days)
   }
   out.df
 }
 
-gen_SEIR <- function(trans_prob.base1, trans_prob.base2, eff.multi1, inf_mean) {
+gen_SEIR <- function(trans_prob.base1, trans_prob.base2, eff.multi1, inf_mean,
+                     delta=NULL, N=NULL, N1=NULL, pop.size=NULL,
+                     seed1=NULL, seed2=NULL, T0=NULL, T1=NULL,
+                     burnin=NULL, end_buffer=NULL) {
+  if (is.null(delta)) delta <- get("delta", envir=.GlobalEnv)
+  if (is.null(N)) N <- get("N", envir=.GlobalEnv)
+  if (is.null(N1)) N1 <- get("N1", envir=.GlobalEnv)
+  if (is.null(pop.size)) pop.size <- get("pop.size", envir=.GlobalEnv)
+  if (is.null(seed1)) seed1 <- get("seed1", envir=.GlobalEnv)
+  if (is.null(seed2)) seed2 <- get("seed2", envir=.GlobalEnv)
+  if (is.null(T0)) T0 <- get("T0", envir=.GlobalEnv)
+  if (is.null(T1)) T1 <- get("T1", envir=.GlobalEnv)
+  if (is.null(burnin)) burnin <- get("burnin", envir=.GlobalEnv)
+  if (is.null(end_buffer)) end_buffer <- get("end_buffer", envir=.GlobalEnv)
+  total.days <- T0+T1+burnin+end_buffer
   out.sim <- lapply(1:N, function(ind) {
     if (ind %in% (1:N1)) {
       run_SEIR_varying(pop.size=pop.size, I0=seed1,
-                       time_steps=(T0+T1+burnin*3), inf_mean=inf_mean, delta=delta,
+                       time_steps=total.days, inf_mean=inf_mean, delta=delta,
                        trans_prob=c(rep(trans_prob.base1, T0+burnin),
-                                    rep(trans_prob.base1*eff.multi1, T1+burnin*2)))
+                                    rep(trans_prob.base1*eff.multi1, T1+end_buffer)))
     } else {
       run_SEIR_varying(pop.size=pop.size, I0=seed2,
-                       time_steps=(T0+T1+burnin*3), inf_mean=inf_mean, delta=delta,
+                       time_steps=total.days, inf_mean=inf_mean, delta=delta,
                        trans_prob=c(rep(trans_prob.base2, T0+burnin),
-                                    rep(trans_prob.base2, T1+burnin*2)))
+                                    rep(trans_prob.base2, T1+end_buffer)))
     }
   })
   out.df <- rbindlist(out.sim) %>%
-    mutate(unit=rep(1:N, each=T0+T1+burnin*3),
+    mutate(unit=rep(1:N, each=total.days),
            initial_seed=ifelse(unit %in% (1:N1), seed1, seed2))
-  out.df$prevalence <- compute_prevalence_seeded(out.df, inf_mean, T0+T1+burnin)
-  out.df$infected_est <- compute_infected_seeded(out.df, delta, T0+T1+burnin)
-  out.df$R_cohort <- compute_Rt_cohort_seeded(out.df, inf_mean)
+  out.df$prevalence <- compute_prevalence_seeded(out.df, inf_mean, total.days)
+  out.df$infected_est <- compute_infected_seeded(out.df, delta, total.days)
   out.df
 }
 
 # dgp is either "SIR" or "SEIR"
 process_data <- function(out.df, inf_mean, agg=7, dgp="SIR", incubation_mean=0,
-                         discard_start=burnin, discard_end=burnin*2) {
+                         discard_start=NULL, discard_end=NULL) {
+  if (is.null(discard_start)) discard_start <- get("burnin", envir=.GlobalEnv)
+  if (is.null(discard_end)) discard_end <- get("end_buffer", envir=.GlobalEnv)
   if (!("initial_seed" %in% names(out.df))) {
     stop("Simulated data passed to process_data() must contain initial_seed.")
   }
-  seeded.weekly.incidence <- aggregate_seeded_incidence(out.df, agg=agg)
-
   df.agg <- out.df %>%
     group_by(unit) %>% arrange(t) %>%
     mutate(week=ceiling(t/agg),
@@ -274,11 +245,10 @@ process_data <- function(out.df, inf_mean, agg=7, dgp="SIR", incubation_mean=0,
               S_frac=sum(S_lag)/(pop.size*agg),
               R_true=ifelse(dgp=="SIR", sum(inc)/sum(I_lag),
                             sum(infected)/sum(I_lag)),
-              R_est=ifelse(dgp=="SIR", sum(inc)/sum(prevalence_lag),
-                           sum(infected_est)/sum(prevalence_lag)),
-              R_cohort=mean(R_cohort, na.rm=TRUE)/inf_mean,
+              Rt_exposure=ifelse(dgp=="SIR", sum(inc)/sum(prevalence_lag),
+                                 sum(infected_est)/sum(prevalence_lag)),
               .groups="drop_last") %>%
-    mutate(beta_est=R_est/S_frac,
+    mutate(beta_exposure=Rt_exposure/S_frac,
            trt.unit=unit %in% (1:N1),
            trt.time=week > (T0+burnin)/agg,
            trt_post=trt.unit & trt.time)
@@ -302,20 +272,8 @@ process_data <- function(out.df, inf_mean, agg=7, dgp="SIR", incubation_mean=0,
                      paste(inactive.groups, collapse=", ")))
   }
 
-  wt.incubation <- if (dgp=="SEIR") incubation_mean else 0
-  if (dgp=="SEIR" && (length(wt.incubation)!=1L || is.na(wt.incubation) ||
-      !is.finite(wt.incubation) || wt.incubation<=0)) {
-    stop("SEIR Wallinga-Teunis estimation requires a positive incubation_mean.")
-  }
-  wt.df <- compute_Rt_wt(inf_mean=inf_mean, ID=seeded.weekly.incidence$unit,
-                         inc=seeded.weekly.incidence$inc_for_Rt, agg=agg,
-                         incubation_mean=wt.incubation)
-  data.clean <- df.agg %>%
-    left_join(wt.df, c("unit"="unit", "week"="week")) %>%
-    mutate(R_wt=R_wt/inf_mean, beta_wt=R_wt/S_frac)
-
-  data.clean %>% data.frame() %>%
-    mutate(unit=relevel(factor(unit), ref=max(data.clean$unit)),
+  df.agg %>% data.frame() %>%
+    mutate(unit=relevel(factor(unit), ref=max(df.agg$unit)),
            week=week-discard_start/agg) %>%
     filter(week>0, week<=max(week)-discard_end/agg)
 }

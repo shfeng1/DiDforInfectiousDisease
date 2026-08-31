@@ -11,48 +11,46 @@ beta3 <- 0.16 # to change for non-trivial susceptible depletion
 inf_days <- 10
 pop <- 1e+08 # make it large enough so there is NO susceptible depletion in other cases
 pop2 <- 1e+04 # to force a non-trivial susceptible depletion where needed
-agg <- 2 # days of aggregation / smoothing for log growth
+agg <- 2 # days of aggregation / smoothing
 ##############################################################################################################################
-# parallelization run test scenarios
-doMC::registerDoMC(cores = detectCores()-1)
 foreach::getDoParWorkers()
 
 # (a) All parameters match
 set.seed(2026, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
-test1.tmp <- foreach(k=1:1000, .errorhandling = "pass", .combine=function(x,y) rbindlist(list(x,y))) %dopar% {
+test1.tmp <- foreach(k=1:1000, .errorhandling = "stop", .combine=function(x,y) rbindlist(list(x,y))) %dopar% {
   sim_model_compare(pop.size1=pop, pop.size2=pop, T.total=T.total, burnin=burnin, T1=0, inf_days=inf_days,
-            trans_prob.base1=beta, trans_prob.base2=beta)
+            trans_prob.base1=beta, trans_prob.base2=beta) %>% mutate(sim=k)
 }
 
 # (b) Different numbers of initial infections
 set.seed(2026, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
-test2.tmp <- foreach(k=1:1000, .errorhandling = "pass", .combine=function(x,y) rbindlist(list(x,y))) %dopar% {
+test2.tmp <- foreach(k=1:1000, .errorhandling = "stop", .combine=function(x,y) rbindlist(list(x,y))) %dopar% {
   sim_model_compare(seed1=200, pop.size1=pop, pop.size2=pop, T.total=T.total, burnin=burnin, T1=0, inf_days=inf_days,
-            trans_prob.base1=beta, trans_prob.base2=beta)
+            trans_prob.base1=beta, trans_prob.base2=beta) %>% mutate(sim=k)
 }
 
 # (c) Different baseline transmission, but ratio was constant over time
 set.seed(2026, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
-test3.tmp <- foreach(k=1:1000, .errorhandling = "pass", .combine=function(x,y) rbindlist(list(x,y))) %dopar% {
+test3.tmp <- foreach(k=1:1000, .errorhandling = "stop", .combine=function(x,y) rbindlist(list(x,y))) %dopar% {
   sim_model_compare(trans_prob.base1=beta2, pop.size1=pop, pop.size2=pop, T.total=T.total, burnin=burnin,
             T1=30,
-            inf_days=inf_days, trans_prob.base2=beta)
+            inf_days=inf_days, trans_prob.base2=beta) %>% mutate(sim=k)
 }
 
 # (d) Different time-varying transmission, doubled at time 45
 set.seed(2026, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
-test4.tmp <- foreach(k=1:1000, .errorhandling = "pass", .combine=function(x,y) rbindlist(list(x,y))) %dopar% {
+test4.tmp <- foreach(k=1:1000, .errorhandling = "stop", .combine=function(x,y) rbindlist(list(x,y))) %dopar% {
   sim_model_compare(trans_prob.base1=beta2, pop.size1=pop, pop.size2=pop, T.total=T.total, burnin=burnin, 
             T1=30,
             inf_days=inf_days, trans_prob.base2=beta,
-            eff.multi1 = 2, eff.multi2 = 2)
+            eff.multi1 = 2, eff.multi2 = 2) %>% mutate(sim=k)
 }
 
 # (e) Different transmission & non-trivial susceptible depletion
 set.seed(2026, kind = "L'Ecuyer-CMRG") # set seed properly for %dopar%
-test5.tmp <- foreach(k=1:1000, .errorhandling = "pass", .combine=function(x,y) rbindlist(list(x,y))) %dopar% {
+test5.tmp <- foreach(k=1:1000, .errorhandling = "stop", .combine=function(x,y) rbindlist(list(x,y))) %dopar% {
   sim_model_compare(pop.size1=pop2, pop.size2=pop, T.total=T.total, burnin=burnin, T1=0, inf_days=inf_days,
-            trans_prob.base1=beta3, trans_prob.base2=beta)
+            trans_prob.base1=beta3, trans_prob.base2=beta) %>% mutate(sim=k)
 }
 ##############################################################################################################################
 # Summarize / Average over simulations
@@ -76,7 +74,7 @@ test5 <- test5.tmp %>%
   group_by(t, unit, pop.size) %>%
   reframe(S = mean(S), I = mean(I), R = mean(R), inc = mean(inc),  C = mean(C), mean = mean(mean),
           id = "'(e) Different transmission and\nnon-trivial susceptible depletion'", 
-          lab = paste0("N*`=`*10*`,`*0*0*0~`&`~beta[1*`,`*t]~`=`~", beta3))
+          lab = paste0("N[1]*`=`*10*`,`*0*0*0~`&`~beta[1*`,`*t]~`=`~", beta3))
 ##############################################################################################################################
 # calculate the outcomes in each model
 # some numbers are scaled down to make figure look better for illustration purposes; otherwise all other lines are shown as a flat line at 0
@@ -105,33 +103,42 @@ growth_df <- rbind(test1, test2, test3, test4, test5) %>%
          model = "'log growth'") %>%
   dplyr::select(model, unit, id, lab, y, t)
 
-Rt_df <- rbind(test1, test2, test3, test4, test5) %>%
-  group_by(id, lab, unit) %>%
-  reframe(t = 3:(T.total+burnin),
-          y = wallinga_teunis(round(inc), method = "parametric_si",
-                              config = list(
-                                t_start = t-1,
-                                t_end = t,
-                                method = "parametric_si", 
-                                mean_si = inf_days, std_si = inf_days,
-                                n_sim = 0))$R$`Mean(R)`) %>%
-  mutate(y = ifelse(id=="'(d) Different time-varying\ntransmission'", y/1.5, y),
-         y = log(y),
-         model = "log~R[t]") %>%
+calculate_exposure_outcomes <- function(data, id, lab) {
+  data %>%
+    group_by(sim, unit) %>% arrange(t, .by_group=TRUE) %>%
+    mutate(prevalence=Reduce(function(previous, current) current+(1-1/inf_days)*previous,
+                             inc[-1], init=first(I), accumulate=TRUE),
+           prevalence_lag=lag(prevalence), S_lag=lag(S), week=ceiling(t/agg)) %>%
+    filter(t>=2) %>% group_by(sim, unit, week) %>%
+    summarise(Rt_exposure=sum(inc)/sum(prevalence_lag),
+              S_frac=sum(S_lag)/(first(pop.size)*agg), .groups="drop") %>%
+    mutate(beta_exposure=Rt_exposure/S_frac, t=week*agg, id=id, lab=lab)
+}
+
+exposure_df <- bind_rows(
+  calculate_exposure_outcomes(test1.tmp, test1$id[[1]], test1$lab[[1]]),
+  calculate_exposure_outcomes(test2.tmp, test2$id[[1]], test2$lab[[1]]),
+  calculate_exposure_outcomes(test3.tmp, test3$id[[1]], test3$lab[[1]]),
+  calculate_exposure_outcomes(test4.tmp, test4$id[[1]], test4$lab[[1]]),
+  calculate_exposure_outcomes(test5.tmp, test5$id[[1]], test5$lab[[1]])
+) %>%
+  group_by(id, lab, unit, t) %>%
+  summarise(Rt_exposure=mean(Rt_exposure), beta_exposure=mean(beta_exposure), .groups="drop") %>%
+  mutate(Rt_exposure=ifelse(id=="'(d) Different time-varying\ntransmission'", Rt_exposure/1.5, Rt_exposure),
+         beta_exposure=ifelse(id=="'(d) Different time-varying\ntransmission'", beta_exposure/1.5, beta_exposure))
+
+Rt_df <- exposure_df %>%
+  mutate(y=log(Rt_exposure), model="log~R[t]") %>%
   dplyr::select(model, unit, id, lab, y, t)
 
-beta_df <- rbind(test1, test2, test3, test4, test5) %>%
-  mutate(sus_frac = S/pop.size) %>%
-  merge(Rt_df, by = c("id", "lab", "unit", "t")) %>%
-  mutate(y = exp(y)/sus_frac,
-         y = log(y),
-         model = "log~\u03B2[t]") %>%
+beta_df <- exposure_df %>%
+  mutate(y=log(beta_exposure), model="log~beta[t]") %>%
   dplyr::select(model, unit, id, lab, y, t)
 ##############################################################################################################################
 # merge all model data together for graphing
 p.df <- inc_df %>% rbind(loginc_df) %>% rbind(beta_df) %>% rbind(growth_df) %>% rbind(Rt_df) %>% 
   mutate(model = factor(model, levels = c("incidence", "'log incidence'", "'log growth'",
-                                          "log~R[t]", "log~\u03B2[t]"))) %>%
+                                          "log~R[t]", "log~beta[t]"))) %>%
   filter(t <= T.total,
          t > (burnin + inf_days*0.5)) %>%
   mutate(t = t - (burnin + inf_days*0.5)) %>%
@@ -142,7 +149,7 @@ p.df.lab <- p.df %>% filter(unit==1 & first.time==1) %>% mutate(checkmark = NA)
 p.df.lab$checkmark[p.df.lab$model=="incidence"] <- c("\u2713", rep("X", 4))
 p.df.lab$checkmark[p.df.lab$model=="'log incidence'"] <- c(rep("\u2713", 2), rep("X", 3))
 p.df.lab$checkmark[p.df.lab$model=="'log growth'"] <- c(rep("\u2713", 3), rep("X", 2))
-p.df.lab$checkmark[p.df.lab$model=="log~\u03B2[t]"] <- c(rep("\u2713", 5))
+p.df.lab$checkmark[p.df.lab$model=="log~beta[t]"] <- c(rep("\u2713", 5))
 p.df.lab$checkmark[p.df.lab$model=="log~R[t]"] <- c(rep("\u2713", 4), "X")
 ##############################################################################################################################
 Figure1 <- ggplot(p.df, aes(x=t, y=y, linetype=factor(unit), col=factor(unit))) + 

@@ -46,7 +46,7 @@ growth.obs <- data_in_growth %>%
   arrange(week) %>%
   filter(week >= min(data_in$treat.time[data_in$treat.time > 0]) - 1) %>%
   mutate(growth.ctl = log(growth) - c(0, loggrowth),
-         Pos.ctl = NA_real_) %>%
+         Pos.ctl = NA) %>%
   filter(treat.time > 0, week >= treat.time - 1, !is.na(growth))
 
 for (unit in unique(growth.obs$OrgName)) {

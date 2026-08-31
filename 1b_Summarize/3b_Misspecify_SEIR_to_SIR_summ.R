@@ -1,15 +1,14 @@
-# rm(list=ls())
 here::i_am("1b_Summarize/3b_Misspecify_SEIR_to_SIR_summ.R")
 source("./global_options.R")
 source("./1a_Scripts/0_Format_Table.R")
 
-p_out <- readRDS("./4_Output/misspecify_SEIR_to_SIR.rds")
+p_out <- readRDS("./4_Output/misspecify_SEIR_to_SIR.rds") %>%
+  filter(model %in% model.list)
 
 eff.truth <- readRDS("./4_Output/SEIR_RR.rds") %>%
-  filter(model != "Rt_wt", !is.na(eff.true), trans_prob.base1=="0.1265", trans_prob.base2=="0.115") %>%
+  filter(trans_prob.base1=="0.1265", trans_prob.base2=="0.115") %>%
   group_by(trans_prob.base1, trans_prob.base2, eff.multi, model) %>%
-  summarise(eff.true = mean(eff.true)) %>%
-  mutate(model = ifelse(model=="Rt_cohort", "Rt_wt", model))
+  summarise(eff.true = mean(eff.true))
 ##############################################################################################################################
 # Power / type I error rate
 power.df2 <- p_out %>%
@@ -24,17 +23,14 @@ bias.df <- p_out %>%
 ##############################################################################################################################
 bias.AME2 <- bias.df %>%
   group_by(model, eff.multi) %>%
-  summarise(nsim = n(), Y.untrt.true = mean(Y.untrt.true), 
-            Y.untrt.fit = mean(Y.trt-AME), Y.untrt.adj = mean(Y.trt-AME.adj2),
-            AME.true = mean(AME.true), AME.fit = mean(AME), AME.adj = mean(AME.adj2)) %>%
+  summarise(Y.untrt.true = mean(Y.untrt.true),
+            AME.true = mean(AME.true), AME.fit = mean(AME)) %>%
   mutate(bias.fit = AME.fit - AME.true,
-         bias.adj = ifelse(model %in% c("inc", "loginc"), bias.fit, AME.adj - AME.true),
-         bias.fit.pct = bias.fit / Y.untrt.true,
-         bias.adj.pct = bias.adj / Y.untrt.true)
+         bias.fit.pct = bias.fit / Y.untrt.true)
 ##############################################################################################################################
 bias.original2 <- bias.df %>% 
   group_by(eff.multi, model) %>%
-  summarise(nsim = n(), eff = mean(effect)) %>%
+  summarise(eff = mean(effect)) %>%
   merge(eff.truth, by = c("eff.multi", "model"))
 bias.original2$eff.true[bias.original2$model=="inc"] <- bias.AME2$AME.true[bias.AME2$model=="inc"]
 bias.original2$eff.bias <- bias.original2$eff - bias.original2$eff.true
