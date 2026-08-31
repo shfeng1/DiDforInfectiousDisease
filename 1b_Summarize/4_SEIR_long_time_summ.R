@@ -1,40 +1,55 @@
 rm(list=ls())
 here::i_am("1b_Summarize/4_SEIR_long_time_summ.R")
 source("./global_options.R")
-source("./1a_Scripts/0_Format_Table.R")
 
-p_out <- readRDS("4_Output/SEIR_long_time.rds") %>% filter(model=="beta_exposure")
+models <- c("growth", "Rt_exposure", "beta_exposure")
+T1.values.weeks <- c(3, 5, 10, 15, 20)
 
-eff.truth <- readRDS("./4_Output/SEIR_RR.rds") %>%
-  filter(trans_prob.base1=="0.1265", trans_prob.base2=="0.115") %>%
-  group_by(trans_prob.base1, trans_prob.base2, eff.multi, model) %>%
-  summarise(eff.true = mean(eff.true))
-##############################################################################################################################
-bias.df <- p_out %>%
-  filter(eff.multi %in% c(0.9, 0.95)) %>% data.frame() %>%
-  group_by(pop.size, trans_prob.base1, trans_prob.base2, eff.multi) %>%
-  mutate(AME.true = Y.trt - Y.untrt.true, nsim = n())
-##############################################################################################################################
-bias.AME2 <- bias.df %>%
-  group_by(pop.size, trans_prob.base1, trans_prob.base2, model, eff.multi) %>%
-  summarise(AME.true = mean(AME.true), AME.fit = mean(AME),
-            AME.adj = mean(AME.adj2)) %>%
-  mutate(bias.fit = AME.fit - AME.true,
-         bias.adj = AME.adj - AME.true)
-##############################################################################################################################
-bias.original2 <- bias.df %>% 
-  group_by(trans_prob.base1, trans_prob.base2, eff.multi, model) %>%
-  summarise(eff = mean(effect)) %>%
-  merge(eff.truth, by = c("eff.multi", "model"))
-bias.original2$eff.bias <- bias.original2$eff - bias.original2$eff.true
-##############################################################################################################################
-tbl.A3 <- format.tbl.A3(bias.original2, bias.AME2) %>%
-  mutate(model="Log $\\beta_t$") %>%
-  kable(format="latex", booktabs=TRUE, escape=FALSE,
-        col.names=c(
-          "Outcome specification",
-          linebreak("Bias on the original scale: mean absolute value (range)"),
-          linebreak("Bias on the AME scale before correction: mean absolute value (range)"),
-          linebreak("Bias on the AME scale after correction: mean absolute value (range)")
-        ))
-tbl.A3
+p_out <- readRDS("./4_Output/SEIR_long_time_T1.rds") %>%
+  filter(
+    model %in% models,
+    eff.multi %in% c(0.9, 0.95, 1),
+    (T1/agg) %in% T1.values.weeks
+  )
+
+bias.AME <- p_out %>%
+  mutate(AME.true=Y.trt-Y.untrt.true) %>%
+  group_by(T1, model, eff.multi) %>%
+  summarise(
+    AME.true=mean(AME.true),
+    AME.fit=mean(AME),
+    .groups="drop"
+  ) %>%
+  mutate(
+    T1.weeks=T1/agg,
+    bias.fit=AME.fit-AME.true
+  )
+
+model.labels <- c(
+  growth="Log growth",
+  Rt_exposure="Log $R_t$",
+  beta_exposure="Log $\\beta_t$"
+)
+
+tbl.long.time.data <- bias.AME %>%
+  group_by(model, T1.weeks) %>%
+  summarise(
+    mean=format(round(mean(abs(bias.fit)), 1), nsmall=1),
+    min=format(round(min(bias.fit), 1), nsmall=1),
+    max=format(round(max(bias.fit), 1), nsmall=1),
+    .groups="drop"
+  ) %>%
+  mutate(
+    bias.raw=paste0(mean, " (", min, ", ", max, ")"),
+    model=factor(model, levels=models, labels=unname(model.labels[models])),
+    T1.weeks=factor(T1.weeks, levels=T1.values.weeks)
+  ) %>%
+  dplyr::select(model, T1.weeks, bias.raw) %>%
+  pivot_wider(names_from=T1.weeks, values_from=bias.raw) %>%
+  arrange(model)
+
+tbl.long.time <- tbl.long.time.data %>%
+  kable(
+    format="latex", booktabs=TRUE, escape=FALSE,
+    col.names=c("Outcome specification", paste0("T1 = ", T1.values.weeks))
+  )

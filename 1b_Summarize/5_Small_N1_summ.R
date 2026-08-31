@@ -47,13 +47,13 @@ power110 <- power.df2 %>%
 power.out <- typeIerr %>% merge(power90) %>% merge(power95) %>% merge(power105) %>% merge(power110)
 
 # Put in Latex format for wild score bootstrap
-tblA3_wild <- power.out %>%
+tbl_inference_wild <- power.out %>%
   dplyr::select(model, error_wild, wild90, wild95, wild105, wild110) %>%
   arrange(match(model, model.list)) %>%
   kable(format = "latex")
 
 # Put in Latex format for normal-based SE
-tblA3_norm <- power.out %>%
+tbl_inference_norm <- power.out %>%
   dplyr::select(model, error_norm, norm90, norm95, norm105, norm110) %>%
   arrange(match(model, model.list)) %>%
   kable(format = "latex")

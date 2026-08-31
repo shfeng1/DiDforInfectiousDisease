@@ -43,9 +43,9 @@ growth_effect_15 <- c(
   upper=unname(exp(quantile(ATT_boot, 0.975)))
 )
 growth_AME_15 <- c(
-  estimate=mean(AMEs["AME.adj2",]),
-  lower=unname(quantile(AMEs["AME.adj2",], 0.025)),
-  upper=unname(quantile(AMEs["AME.adj2",], 0.975))
+  estimate=mean(AMEs["AME",]),
+  lower=unname(quantile(AMEs["AME",], 0.025)),
+  upper=unname(quantile(AMEs["AME",], 0.975))
 )
 ##################################################   KEEP 5 WEEKS POST INTERVENTION
 ATT_boot <- colMeans(ATT_gt[rownames(ATT_gt) %in% (0:4),])
@@ -57,7 +57,7 @@ growth_effect_5 <- c(
   upper=unname(exp(quantile(ATT_boot, 0.975)))
 )
 growth_AME_5 <- c(
-  estimate=mean(AMEs["AME.adj2",]),
-  lower=unname(quantile(AMEs["AME.adj2",], 0.025)),
-  upper=unname(quantile(AMEs["AME.adj2",], 0.975))
+  estimate=mean(AMEs["AME",]),
+  lower=unname(quantile(AMEs["AME",], 0.025)),
+  upper=unname(quantile(AMEs["AME",], 0.975))
 )

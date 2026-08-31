@@ -80,8 +80,12 @@ source("2a_School_Masking/4_School_Callaway_SantAnna.R")
 print(Table_A2)
 
 # Generation of Table A3
+source("1b_Summarize/4_SEIR_long_time_summ.R")
+print(tbl.long.time)
+
+# Generation of Table A4
 source("1b_Summarize/5_Small_N1_summ.R")
-print(tblA3_wild)
-print(tblA3_norm)
+print(tbl_inference_wild)
+print(tbl_inference_norm)
 # END OF REPRODUCING EXHIBITS
 #######################################################################################
