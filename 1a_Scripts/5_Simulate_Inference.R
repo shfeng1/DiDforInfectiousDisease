@@ -5,7 +5,8 @@ source("./1a_Scripts/0_SIR.R")
 output.file <- "./4_Output/SIR_N1=5.rds"
 
 N <- 50; N1 <- 5
-sim.param <- expand.grid(trans_prob.base2=1.15/inf_mean, trans_prob.ratio=1.1,eff.multi=c(0.9, 0.95, 1, 1.05, 1.1)) %>%
+sim.param <- expand.grid(trans_prob.base2=1.15/inf_mean, trans_prob.ratio=1.1,
+                         eff.multi=c(0.9, 0.95, 1, 1.05, 1.1)) %>%
   mutate(trans_prob.base1=trans_prob.base2*trans_prob.ratio)
 
 # split 3K simulations into 3 batches

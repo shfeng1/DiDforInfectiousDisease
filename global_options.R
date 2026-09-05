@@ -56,8 +56,11 @@ capture_simulation_error <- function(expr) {
 
 pal <- c("darkgrey", "#984EA3", "#FF5932", "olivedrab4", "tan3", "#377EB8")
 model.list <- c("inc", "loginc", "growth", "Rt_exposure", "beta_exposure")
+model.labels <- c(inc="incidence", loginc="log incidence", growth="log growth",
+                  Rt_exposure="Rt", beta_exposure="\u03B2t")
+model.colors <- setNames(pal[c(1, 2, 3, 5, 6)], unname(model.labels))
 
 nsim <- 1000 # 1K run at a time.
 inf_mean <- 5*2; delta <- 3*2; pop.size <- 1e4; seed1 <- seed2 <- 100
-N <- 50; N1_ratio <- 0.5; N1 <- N * N1_ratio
-T0 <- 4*7; T1 <- 3*7; burnin <- 5*7; end_buffer <- 3*7; agg <- 7
+N <- 50; N1_ratio <- 0.5; N1 <- N * N1_ratio; agg <- 7
+T0 <- 4*agg; T1 <- 3*agg; burnin <- 5*agg; end_buffer <- 3*agg

@@ -53,7 +53,5 @@ beta.AME <- kansas_ame_monte_carlo(
                  `lower bound`=lower.bound, `upper bound`=upper.bound),
   trt.IDs=county.trt, unit_population=unit.population,
   inf_mean=inf_days, delta=delta, T0_days=T0)
-beta_COVIDEstim_AME_20 <- setNames(
-  beta.AME$AME,
-  c("estimate", "lower", "upper")
-)
+beta_COVIDEstim_AME_20 <- setNames(beta.AME$AME,
+                                   c("estimate", "lower", "upper"))

@@ -37,27 +37,19 @@ variance.model <- school_growth_variance_model(df_sunab)
 ATT_boot <- colMeans(ATT_gt[rownames(ATT_gt) >= 0,])
 ATT <- mean(coef(fit)[time_to_trt >= 0])
 AMEs <- school_growth_ame(ATT_gt, time_to_trt, df_sunab, variance.model)
-growth_effect_15 <- c(
-  estimate=exp(ATT),
-  lower=unname(exp(quantile(ATT_boot, 0.025))),
-  upper=unname(exp(quantile(ATT_boot, 0.975)))
-)
-growth_AME_15 <- c(
-  estimate=mean(AMEs["AME",]),
-  lower=unname(quantile(AMEs["AME",], 0.025)),
-  upper=unname(quantile(AMEs["AME",], 0.975))
-)
+growth_effect_15 <- c(estimate=exp(ATT),
+                      lower=unname(exp(quantile(ATT_boot, 0.025))),
+                      upper=unname(exp(quantile(ATT_boot, 0.975))))
+growth_AME_15 <- c(estimate=mean(AMEs["AME",]),
+                   lower=unname(quantile(AMEs["AME",], 0.025)),
+                   upper=unname(quantile(AMEs["AME",], 0.975)))
 ##################################################   KEEP 5 WEEKS POST INTERVENTION
 ATT_boot <- colMeans(ATT_gt[rownames(ATT_gt) %in% (0:4),])
 ATT <- mean(coef(fit)[time_to_trt %in% (0:4)])
 AMEs <- school_growth_ame(ATT_gt, time_to_trt, df_sunab, variance.model, subset=0:4)
-growth_effect_5 <- c(
-  estimate=exp(ATT),
-  lower=unname(exp(quantile(ATT_boot, 0.025))),
-  upper=unname(exp(quantile(ATT_boot, 0.975)))
-)
-growth_AME_5 <- c(
-  estimate=mean(AMEs["AME",]),
-  lower=unname(quantile(AMEs["AME",], 0.025)),
-  upper=unname(quantile(AMEs["AME",], 0.975))
-)
+growth_effect_5 <- c(estimate=exp(ATT),
+                     lower=unname(exp(quantile(ATT_boot, 0.025))),
+                     upper=unname(exp(quantile(ATT_boot, 0.975))))
+growth_AME_5 <- c(estimate=mean(AMEs["AME",]),
+                  lower=unname(quantile(AMEs["AME",], 0.025)),
+                  upper=unname(quantile(AMEs["AME",], 0.975)))

@@ -2,7 +2,7 @@ here::i_am("1b_Summarize/5_Small_N1_summ.R")
 source("./global_options.R")
 source("./1a_Scripts/0_Format_Table.R")
 
-p_out <- readRDS("./4_Output/SIR_N1=5.rds") %>% filter(model %in% model.list)
+p_out <- readRDS("./4_Output/SIR_N1=5.rds")
 ##############################################################################################################################
 # Power / type I error rate
 power.df2 <- p_out %>%

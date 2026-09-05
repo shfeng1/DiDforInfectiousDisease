@@ -2,8 +2,7 @@ here::i_am("1b_Summarize/2b_SEIR_summ.R")
 source("./global_options.R")
 source("./1a_Scripts/0_Format_Table.R")
 
-p_out <- readRDS("4_Output/SEIR_base_case.rds") %>%
-  filter(model %in% model.list)
+p_out <- readRDS("4_Output/SEIR_base_case.rds")
 
 eff.truth <- readRDS("./4_Output/SEIR_RR.rds") %>%
   filter(trans_prob.base1=="0.1265", trans_prob.base2=="0.115") %>%

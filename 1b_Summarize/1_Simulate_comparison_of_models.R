@@ -1,5 +1,6 @@
 rm(list=ls())
 here::i_am("1b_Summarize/1_Simulate_comparison_of_models.R")
+source("./global_options.R")
 source("./1a_Scripts/0_SIR.R")
 ##############################################################################################################################
 # set up variable inputs

@@ -80,7 +80,7 @@ source("2a_School_Masking/4_School_Callaway_SantAnna.R")
 print(Table_A2)
 
 # Generation of Table A3
-source("1b_Summarize/4_SEIR_long_time_summ.R")
+source("1b_Summarize/4_SIR_long_time_summ.R")
 print(tbl.long.time)
 
 # Generation of Table A4

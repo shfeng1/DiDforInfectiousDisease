@@ -33,20 +33,16 @@ ATT_gt <- boottest.glm(fit, gweight=gweight, model="inc")
 rownames(ATT_gt) <- time_to_trt
 ATT_boot <- colSums(ATT_gt[rownames(ATT_gt) >= 0,])
 ATT <- sum(coef(fit)[time_to_trt >= 0])
-inc_effect_15 <- c(
-  estimate=ATT,
-  lower=unname(quantile(ATT_boot, 0.025)),
-  upper=unname(quantile(ATT_boot, 0.975))
-)
+inc_effect_15 <- c(estimate=ATT,
+                   lower=unname(quantile(ATT_boot, 0.025)),
+                   upper=unname(quantile(ATT_boot, 0.975)))
 inc_AME_15 <- inc_effect_15
 ##################################################   KEEP 5 WEEKS POST INTERVENTION
 ATT_boot <- colSums(ATT_gt[rownames(ATT_gt) %in% (0:4),])
 ATT <- sum(coef(fit)[time_to_trt %in% (0:4)])
-inc_effect_5 <- c(
-  estimate=ATT,
-  lower=unname(quantile(ATT_boot, 0.025)),
-  upper=unname(quantile(ATT_boot, 0.975))
-)
+inc_effect_5 <- c(estimate=ATT,
+                  lower=unname(quantile(ATT_boot, 0.025)),
+                  upper=unname(quantile(ATT_boot, 0.975)))
 inc_AME_5 <- inc_effect_5
 ############################################### LOG INC ##############################################
 fit <- fepois(y ~ sunab(group, time, ref.c = 10000) | ID + time, weights = df_sunab$wt, data = df_sunab)
@@ -56,27 +52,19 @@ rownames(ATT_gt) <- time_to_trt
 ATT_boot <- colMeans(ATT_gt[rownames(ATT_gt) >= 0,])
 ATT <- mean(coef(fit)[time_to_trt >= 0])
 AMEs <- apply(ATT_gt, 2, function(coef) school_loginc_ame(coef, time_to_trt, df_sunab))
-loginc_effect_15 <- c(
-  estimate=exp(ATT),
-  lower=unname(exp(quantile(ATT_boot, 0.025))),
-  upper=unname(exp(quantile(ATT_boot, 0.975)))
-)
-loginc_AME_15 <- c(
-  estimate=school_loginc_ame(coef(fit), time_to_trt, df_sunab),
-  lower=unname(quantile(AMEs, 0.025)),
-  upper=unname(quantile(AMEs, 0.975))
-)
+loginc_effect_15 <- c(estimate=exp(ATT),
+                      lower=unname(exp(quantile(ATT_boot, 0.025))),
+                      upper=unname(exp(quantile(ATT_boot, 0.975))))
+loginc_AME_15 <- c(estimate=school_loginc_ame(coef(fit), time_to_trt, df_sunab),
+                   lower=unname(quantile(AMEs, 0.025)),
+                   upper=unname(quantile(AMEs, 0.975)))
 ##################################################   KEEP 5 WEEKS POST INTERVENTION
 ATT_boot <- colMeans(ATT_gt[rownames(ATT_gt) %in% (0:4),])
 ATT <- mean(coef(fit)[time_to_trt %in% (0:4)])
 AMEs <- apply(ATT_gt, 2, function(coef) school_loginc_ame(coef, time_to_trt, df_sunab, 0:4))
-loginc_effect_5 <- c(
-  estimate=exp(ATT),
-  lower=unname(exp(quantile(ATT_boot, 0.025))),
-  upper=unname(exp(quantile(ATT_boot, 0.975)))
-)
-loginc_AME_5 <- c(
-  estimate=school_loginc_ame(coef(fit), time_to_trt, df_sunab, 0:4),
-  lower=unname(quantile(AMEs, 0.025)),
-  upper=unname(quantile(AMEs, 0.975))
-)
+loginc_effect_5 <- c(estimate=exp(ATT),
+                     lower=unname(exp(quantile(ATT_boot, 0.025))),
+                     upper=unname(exp(quantile(ATT_boot, 0.975))))
+loginc_AME_5 <- c(estimate=school_loginc_ame(coef(fit), time_to_trt, df_sunab, 0:4),
+                  lower=unname(quantile(AMEs, 0.025)),
+                  upper=unname(quantile(AMEs, 0.975)))

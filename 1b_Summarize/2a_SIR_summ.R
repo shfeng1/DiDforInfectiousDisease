@@ -2,10 +2,6 @@ here::i_am("1b_Summarize/2a_SIR_summ.R")
 source("./global_options.R")
 source("./1a_Scripts/0_Format_Table.R")
 
-model.labels <- c(inc="incidence", loginc="log incidence", growth="log growth",
-                  Rt_exposure="Rt", beta_exposure="\u03B2t")
-model.colors <- setNames(pal[c(1, 2, 3, 5, 6)], unname(model.labels))
-
 p_out <- readRDS("4_Output/SIR_base_case.rds") %>%
   filter(model %in% model.list) %>%
   mutate(model.lab=factor(unname(model.labels[model]), levels=unname(model.labels)))
@@ -95,7 +91,7 @@ p.bias.eff1 <- ggplot(bias.original1 %>% filter(model!="inc"),
   geom_line() +
   theme_bw() +
   labs(x = "", y = "Bias in RR (%)") +
-  scale_y_continuous(limit=c(-40, 40), breaks = seq(-40, 40, 20)) +
+  scale_y_continuous(limit=c(-50, 50), breaks = seq(-50, 50, 25)) +
   scale_color_manual(name = "", values = model.colors) +
   theme(legend.position = "bottom",
         panel.grid.minor = element_blank())
@@ -105,7 +101,7 @@ p.bias.eff2 <- ggplot(bias.original2 %>% filter(model=="beta_exposure"), aes(eff
   geom_line(col=model.colors[["\u03B2t"]]) +
   theme_bw() +
   labs(x = "", y = "Bias in RR (%)") +
-  scale_y_continuous(limit=c(-40, 40), breaks = seq(-40, 40, 20)) +
+  scale_y_continuous(limit=c(-50, 50), breaks = seq(-50, 50, 25)) +
   theme(legend.position = "bottom",
         panel.grid.minor = element_blank())
 
@@ -115,7 +111,7 @@ p.bias.AME1 <- ggplot(bias.AME1, aes(eff.multi, bias.fit.pct*100, col=model.lab)
   geom_line() +
   theme_bw() +
   labs(x = "", y = "Bias in AME as % of post-\nintervention case burden") +
-  scale_y_continuous(limit=c(-40, 40), breaks = seq(-40, 40, 20)) +
+  scale_y_continuous(limit=c(-50, 50), breaks = seq(-50, 50, 25)) +
   scale_color_manual(name = "", values = model.colors) +
   theme(legend.position = "bottom",
         panel.grid.minor = element_blank())
@@ -125,7 +121,7 @@ p.bias.AME2 <- ggplot(bias.AME2 %>% filter(model=="beta_exposure"), aes(eff.mult
   geom_line(col=model.colors[["\u03B2t"]]) +
   theme_bw() +
   labs(x = "", y = "Bias in AME as % of post-\nintervention case burden") +
-  scale_y_continuous(limit=c(-40, 40), breaks = seq(-40, 40, 20)) +
+  scale_y_continuous(limit=c(-50, 50), breaks = seq(-50, 50, 25)) +
   theme(legend.position = "bottom",
         panel.grid.minor = element_blank())
 

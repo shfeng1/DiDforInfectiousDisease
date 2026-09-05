@@ -19,11 +19,9 @@ for (b0 in c(seq(-27.57, -27.56, 0.001), seq(-13.20, -13.19, 0.001))) {
 
 lower.bound <- min(inc.p$b0[inc.p$p >= 0.05 & inc.p$b0<inc.coef])
 upper.bound <- max(inc.p$b0[inc.p$p >= 0.05 & inc.p$b0>inc.coef])
-inc_effect_20 <- c(
-  estimate=as.numeric(inc.coef),
-  lower=lower.bound,
-  upper=upper.bound
-)
+inc_effect_20 <- c(estimate=as.numeric(inc.coef),
+                   lower=lower.bound,
+                   upper=upper.bound)
 inc_AME_20 <- inc_effect_20
 inc_p_20 <- inc.p$p[1]
 ####################################################################################################################################
@@ -42,19 +40,15 @@ for (b0 in c(seq(-1.4396, -1.4395, 0.00001), seq(-0.3557, -0.3556, 0.00001))) {
 }
 lower.bound <- min(loginc.p$b0[loginc.p$p >= 0.05 & loginc.p$b0<loginc.coef])
 upper.bound <- max(loginc.p$b0[loginc.p$p >= 0.05 & loginc.p$b0>loginc.coef])
-loginc_effect_20 <- c(
-  estimate=as.numeric(exp(loginc.coef)),
-  lower=exp(lower.bound),
-  upper=exp(upper.bound)
-)
+loginc_effect_20 <- c(estimate=as.numeric(exp(loginc.coef)),
+                      lower=exp(lower.bound),
+                      upper=exp(upper.bound))
 loginc_p_20 <- loginc.p$p[1]
 ####################################################################################################################################
 # calculate AMEs
 loginc.AME <- mean(df.in$stnnewcases7davg[df.in$trt_post] - df.in$stnnewcases7davg[df.in$trt_post]/exp(tail(loginc.fit$coef, 1)))
 loginc.AME.lo <- mean(df.in$stnnewcases7davg[df.in$trt_post] - df.in$stnnewcases7davg[df.in$trt_post]/exp(lower.bound))
 loginc.AME.hi <- mean(df.in$stnnewcases7davg[df.in$trt_post] - df.in$stnnewcases7davg[df.in$trt_post]/exp(upper.bound))
-loginc_AME_20 <- c(
-  estimate=loginc.AME,
-  lower=loginc.AME.lo,
-  upper=loginc.AME.hi
-)
+loginc_AME_20 <- c(estimate=loginc.AME,
+                   lower=loginc.AME.lo,
+                   upper=loginc.AME.hi)

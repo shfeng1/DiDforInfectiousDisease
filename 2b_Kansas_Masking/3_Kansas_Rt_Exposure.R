@@ -55,7 +55,5 @@ Rt_exposure.AME <- kansas_ame_monte_carlo(
                  `lower bound`=lower.bound, `upper bound`=upper.bound),
   trt.IDs=county.trt, unit_population=unit.population,
   inf_mean=inf_days, delta=delta, T0_days=T0)
-Rt_exposure_AME_20 <- setNames(
-  Rt_exposure.AME$AME,
-  c("estimate", "lower", "upper")
-)
+Rt_exposure_AME_20 <- setNames(Rt_exposure.AME$AME,
+                               c("estimate", "lower", "upper"))

@@ -2,8 +2,7 @@ here::i_am("1b_Summarize/3a_Misspecify_GI_summ.R")
 source("./global_options.R")
 source("./1a_Scripts/0_Format_Table.R")
 
-p_out <- readRDS("./4_Output/misspecify_GI.rds") %>%
-  filter(model %in% model.list)
+p_out <- readRDS("./4_Output/misspecify_GI.rds")
 
 eff.truth <- readRDS("./4_Output/SIR_RR.rds") %>%
   filter(trans_prob.base1=="0.1265", trans_prob.base2=="0.115") %>%
