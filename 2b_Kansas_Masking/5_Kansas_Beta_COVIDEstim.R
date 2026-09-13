@@ -42,16 +42,14 @@ data.model <- df.in %>% mutate(unit=ncounty, beta_covidestim=beta/inf_days,
   week=week-min(df.in$week)+1)
 T0 <- length(unique(data.model$start_date[!data.model$trt.time]))*agg
 T1 <- length(unique(data.model$start_date))*agg-T0
-out.df <- reconstruct_kansas_case_states(
-  df.model, county.trt, start_date="2020-06-05", end_date="2020-12-10",
-  inf_mean=inf_days, delta=delta)
+out.df <- reconstruct_kansas_case_states(df.model, county.trt, 
+                                         start_date="2020-06-05", end_date="2020-12-10",
+                                         inf_mean=inf_days, delta=delta)
 
 beta.AME <- kansas_ame_monte_carlo(
   data=data.model, state.data=out.df, fit_column="beta_covidestim",
   transmission_column="transmission",
-  coefficients=c(`point estimate`=beta.coef,
-                 `lower bound`=lower.bound, `upper bound`=upper.bound),
+  coefficients=c(`point estimate`=beta.coef, `lower bound`=lower.bound, `upper bound`=upper.bound),
   trt.IDs=county.trt, unit_population=unit.population,
   inf_mean=inf_days, delta=delta, T0_days=T0)
-beta_COVIDEstim_AME_20 <- setNames(beta.AME$AME,
-                                   c("estimate", "lower", "upper"))
+beta_COVIDEstim_AME_20 <- setNames(beta.AME$AME, c("estimate", "lower", "upper"))

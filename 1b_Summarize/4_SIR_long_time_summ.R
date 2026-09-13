@@ -16,10 +16,12 @@ bias.AME <- p_out %>%
 
 tbl.long.time.data <- bias.AME %>%
   group_by(model, T1.weeks) %>%
-  summarise(bias.raw=round(mean(abs(bias.pct)), 1), .groups="drop") %>%
+  summarise(bias.cases=round(mean(abs(bias.fit))),
+            bias.raw=round(mean(abs(bias.pct)), 1), .groups="drop") %>%
   mutate(model=factor(model, levels=model.list, labels=unname(model.labels[model.list])),
          T1.weeks=factor(T1.weeks, levels=T1.values.weeks),
-         bias.raw=paste0(format(bias.raw, nsmall=1), "\\%")) %>%
+         bias.raw=paste0(format(bias.cases, scientific=FALSE, trim=TRUE),
+                         " (", format(bias.raw, nsmall=1), "\\%)")) %>%
   dplyr::select(model, T1.weeks, bias.raw) %>%
   pivot_wider(names_from=T1.weeks, values_from=bias.raw) %>%
   arrange(model)

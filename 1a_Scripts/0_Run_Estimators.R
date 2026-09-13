@@ -15,11 +15,8 @@ get_unit_population <- function(ind, unit_population=NULL) {
   if (is.null(unit_population)) pop.size else unname(unit_population[as.character(ind)])
 }
 
-aggregate_simulated_incidence <- function(sim.data, trt.IDs=NULL,
-                                          incidence_aggregation="sum",
-                                          unit_population=NULL,
-                                          incidence_scale=NULL,
-                                          week_offset=0) {
+aggregate_simulated_incidence <- function(sim.data, trt.IDs=NULL, incidence_aggregation="sum",
+                                          unit_population=NULL, incidence_scale=NULL, week_offset=0) {
   if (!("unit" %in% names(sim.data))) {
     sim.data$unit <- rep(trt.IDs, each=nrow(sim.data)/length(trt.IDs))
   }
@@ -37,17 +34,19 @@ adjust_fitted_untreated <- function(untreated, variance, approach="approach2") {
   if (approach=="approach1") untreated/(1+variance/2) else untreated/exp(variance/2)
 }
 
-prepare_ame_simulation_window <- function(data_deagg, ind, untreated_rate, dgp,
-                                          simulate_from_trt=FALSE,
-                                          treated_rate=NULL) {
+prepare_ame_simulation_window <- function(data_deagg, ind, untreated_rate, dgp, simulate_from_trt=FALSE,
+                                          treated_rate=NULL, state_data=data_deagg) {
   unit.data <- data_deagg[as.character(data_deagg$unit)==as.character(ind), , drop=FALSE]
   unit.data <- unit.data[order(unit.data$t), , drop=FALSE]
   if (simulate_from_trt) {
     path.data <- unit.data[unit.data$trt.time, , drop=FALSE]
-    state <- unit.data[unit.data$t==min(path.data$t)-1, , drop=FALSE]
   } else {
     path.data <- unit.data
-    state <- unit.data[1, , drop=FALSE]
+  }
+  # Initialize from the state immediately before the first simulated day.
+  state <- state_data[as.character(state_data$unit)==as.character(ind) & state_data$t==min(path.data$t)-1, , drop=FALSE]
+  if (nrow(state)!=1L) {
+    stop("AME simulation requires exactly one initial state for unit ", ind, ".")
   }
   list(
     unit=as.character(ind),
@@ -62,17 +61,13 @@ prepare_ame_simulation_window <- function(data_deagg, ind, untreated_rate, dgp,
   )
 }
 
-simulate_untreated_ame_trajectory <- function(spec, dgp, pop.ind, inf_mean,
-                                               delta=NULL, inf_var=NULL) {
+simulate_untreated_ame_trajectory <- function(spec, dgp, pop.ind, inf_mean, delta=NULL, inf_var=NULL) {
   out <- if (dgp=="SIR") {
-    run_SIR_varying(pop.size=pop.ind, seeds=spec$I0, recovered=spec$R0,
-                    S0=spec$S0, trans_prob=spec$untreated_path,
-                    time_steps=spec$time_steps, inf_mean=inf_mean, inf_var=inf_var)
+    run_SIR_varying(pop.size=pop.ind, seeds=spec$I0, recovered=spec$R0, S0=spec$S0, 
+                    trans_prob=spec$untreated_path, time_steps=spec$time_steps, inf_mean=inf_mean, inf_var=inf_var)
   } else {
-    run_SEIR_varying(pop.size=pop.ind, I0=spec$I0, E0=spec$E0,
-                     recovered=spec$R0, S0=spec$S0,
-                     trans_prob=spec$untreated_path,
-                     time_steps=spec$time_steps, inf_mean=inf_mean, delta=delta)
+    run_SEIR_varying(pop.size=pop.ind, I0=spec$I0, E0=spec$E0, recovered=spec$R0, S0=spec$S0,
+                     trans_prob=spec$untreated_path, time_steps=spec$time_steps, inf_mean=inf_mean, delta=delta)
   }
   out$unit <- spec$unit
   out
@@ -80,8 +75,7 @@ simulate_untreated_ame_trajectory <- function(spec, dgp, pop.ind, inf_mean,
 
 # Paired treated/untreated mechanistic trajectories. This is used only when
 # difference=TRUE. Both paths use the same U(0,1) draw at each time step.
-simulate_paired_ame_trajectories <- function(spec, dgp, pop.ind, inf_mean,
-                                             delta=NULL, inf_var=NULL) {
+simulate_paired_ame_trajectories <- function(spec, dgp, pop.ind, inf_mean, delta=NULL, inf_var=NULL) {
   Ttot <- spec$time_steps+1
   beta1 <- c(NA, spec$treated_path)
   beta0 <- c(NA, spec$untreated_path)
@@ -169,11 +163,9 @@ run_inc <- function(data.in, parallel.id, calculate_p=TRUE) {
       gen p = r(p) in 1
       keep p
       keep if _n==1"
-    p <- my_RStata(src=command, data.in=data.in, data.out=TRUE,
-                   stata.echo=FALSE, id=parallel.id)$p
+    p <- my_RStata(src=command, data.in=data.in, data.out=TRUE, stata.echo=FALSE, id=parallel.id)$p
   }
-  out <- data.frame(model="inc", effect=tail(coef(inc.fit),1), p=p,
-                    AME=tail(coef(inc.fit),1), AME.adj1=NA, AME.adj2=NA)
+  out <- data.frame(model="inc", effect=tail(coef(inc.fit),1), p=p, AME=tail(coef(inc.fit),1), AME.adj1=NA, AME.adj2=NA)
   rownames(out) <- NULL
   out
 }
@@ -188,8 +180,7 @@ run_loginc <- function(data.in, parallel.id, calculate_p=TRUE) {
       gen p = r(p) in 1
       keep p
       keep if _n==1"
-    p <- my_RStata(src=command, data.in=data.in, data.out=TRUE,
-                   stata.echo=FALSE, id=parallel.id)$p
+    p <- my_RStata(src=command, data.in=data.in, data.out=TRUE, stata.echo=FALSE, id=parallel.id)$p
   }
   data.untrt <- data.in %>% filter(trt.unit) %>% mutate(trt_post=FALSE)
   data.untrt$loginc_fit <- predict(loginc.fit, newdata=data.untrt, type="response")
@@ -200,8 +191,7 @@ run_loginc <- function(data.in, parallel.id, calculate_p=TRUE) {
   out
 }
 
-run_growth <- function(data.in, parallel.id=0, trt.IDs=1:N1, coef=NULL,
-                       calculate_p=TRUE) {
+run_growth <- function(data.in, parallel.id=0, trt.IDs=1:N1, coef=NULL, calculate_p=TRUE) {
   growth.fit <- glm(growth ~ -1 + factor(week) + factor(unit) + factor(trt_post), family=poisson, data=data.in)
   p <- NA
   if (is.null(coef) && calculate_p) {
@@ -211,11 +201,14 @@ run_growth <- function(data.in, parallel.id=0, trt.IDs=1:N1, coef=NULL,
       gen p = r(p) in 1
       keep p
       keep if _n==1"
-    p <- my_RStata(src=command, data.in=data.in, data.out=TRUE,
-                   stata.echo=FALSE, id=parallel.id)$p
+    p <- my_RStata(src=command, data.in=data.in, data.out=TRUE, stata.echo=FALSE, id=parallel.id)$p
   }
   data.untrt <- data.in %>% filter(trt.unit) %>% mutate(trt_post=FALSE)
-  data.untrt$growth_fit <- if (is.null(coef)) predict(growth.fit, newdata=data.untrt, type="response") else data.untrt$growth/exp(coef)
+  data.untrt$growth_fit <- if (is.null(coef)) {
+    predict(growth.fit, newdata=data.untrt, type="response")
+  } else {
+    with(data.untrt, inc / inc[match(paste(unit, week-1), paste(unit, week))]) / exp(coef)
+  }
   growth.df <- data.untrt %>%
     filter(week>=T0/agg) %>%
     mutate(Y.untrt.growth=ifelse(trt.time, NA, inc)) %>%
@@ -239,22 +232,19 @@ run_growth <- function(data.in, parallel.id=0, trt.IDs=1:N1, coef=NULL,
     }
   }
   post <- data.untrt$trt.time
-  ame <- mean(data.untrt$inc[post] - data.untrt$Y.untrt.growth[post])
+  ame <- mean(data.untrt$inc[post] - data.untrt$Y.untrt.growth[post], na.rm = !is.null(coef))
   ame1 <- mean(data.untrt$inc[post] - data.untrt$Y.untrt.growth.adj1[post])
   ame2 <- mean(data.untrt$inc[post] - data.untrt$Y.untrt.growth.adj2[post])
   if (is.null(coef)) {
-    data.frame(model="growth", effect=exp(tail(stats::coef(growth.fit),1)), p=p,
-               AME=ame, AME.adj1=ame1, AME.adj2=ame2)
+    data.frame(model="growth", effect=exp(tail(stats::coef(growth.fit),1)), p=p, AME=ame, AME.adj1=ame1, AME.adj2=ame2)
   } else {
     data.frame(model="growth", effect=exp(coef), AME=ame, AME.adj1=ame1, AME.adj2=ame2)
   }
 }
 
-run_Rt <- function(data.in, out.df, dgp, inf_mean, delta=NULL,
-                   inf_var=NULL, trt.IDs=1:N1, coef=NULL, parallel.id=0,
-                   unit_population=NULL, incidence_scale=NULL,
-                   incidence_aggregation="sum", simulate_from_trt=FALSE,
-                   difference=FALSE, calculate_p=TRUE) {
+run_Rt <- function(data.in, out.df, dgp, inf_mean, delta=NULL, inf_var=NULL, trt.IDs=1:N1, coef=NULL, 
+                   parallel.id=0, unit_population=NULL, incidence_scale=NULL, incidence_aggregation="sum", 
+                   simulate_from_trt=FALSE, difference=FALSE, calculate_p=TRUE) {
   data.in$Rt <- data.in$Rt_exposure
   Rt.fit <- glm(Rt ~ -1 + factor(week) + factor(unit) + factor(trt_post), family=poisson, data=data.in)
   p <- NA
@@ -265,8 +255,7 @@ run_Rt <- function(data.in, out.df, dgp, inf_mean, delta=NULL,
       gen p = r(p) in 1
       keep p
       keep if _n==1"
-    p <- my_RStata(src=command, data.in=data.in, data.out=TRUE,
-                   stata.echo=FALSE, id=parallel.id)$p
+    p <- my_RStata(src=command, data.in=data.in, data.out=TRUE, stata.echo=FALSE, id=parallel.id)$p
   }
   data.untrt <- data.in %>% filter(trt.unit) %>% mutate(trt_post=FALSE)
   data.untrt$Rt_fit <- if (is.null(coef)) predict(Rt.fit, newdata=data.untrt, type="response") else data.untrt$Rt/exp(coef)
@@ -275,14 +264,14 @@ run_Rt <- function(data.in, out.df, dgp, inf_mean, delta=NULL,
     mutate(week=ceiling(t/agg), unit=factor(unit)) %>%
     merge(data.untrt %>% dplyr::select(unit, week, Rt, Rt_fit) %>% mutate(week=week+burnin/agg),
           by=c("unit","week"), all.x=TRUE) %>%
-    mutate(trt.time=t>(T0+burnin), Rt_fit=ifelse(trt.time, Rt_fit, Rt),
-           .trans.trt=Rt/S_frac, .trans.untrt=Rt_fit/S_frac) %>%
+    mutate(trt.time=t>(T0+burnin), Rt_fit=ifelse(trt.time, Rt_fit, Rt), .trans.trt=Rt/S_frac, .trans.untrt=Rt_fit/S_frac) %>%
     filter(t>burnin)
 
   if (difference) {
     paired <- lapply(trt.IDs, function(ind) {
       pop.ind <- get_unit_population(ind, unit_population)
-      spec <- prepare_ame_simulation_window(data.deagg, ind, ".trans.untrt", dgp, simulate_from_trt, ".trans.trt")
+      spec <- prepare_ame_simulation_window(data.deagg, ind, ".trans.untrt", dgp, simulate_from_trt,
+                                             ".trans.trt", state_data=out.df)
       paths <- simulate_paired_ame_trajectories(spec, dgp, pop.ind, inf_mean, delta, inf_var)
       list(
         trt=aggregate_simulated_incidence(paths$treated, incidence_aggregation=incidence_aggregation,
@@ -305,7 +294,8 @@ run_Rt <- function(data.in, out.df, dgp, inf_mean, delta=NULL,
     data.untrt$Y.untrt.Rt[post] <- construct_observed_difference_counterfactual(
       data.untrt$inc[post], data.untrt$.model.trt[post], data.untrt$.model.untrt[post])
   } else {
-    specs <- lapply(trt.IDs, function(ind) prepare_ame_simulation_window(data.deagg, ind, ".trans.untrt", dgp, simulate_from_trt))
+    specs <- lapply(trt.IDs, function(ind) prepare_ame_simulation_window(data.deagg, ind, ".trans.untrt", dgp,
+                                                                       simulate_from_trt, state_data=out.df))
     Rt.untrt <- rbindlist(lapply(seq_along(trt.IDs), function(k) {
       simulate_untreated_ame_trajectory(specs[[k]], dgp, get_unit_population(trt.IDs[k], unit_population), inf_mean, delta, inf_var)
     }))
@@ -333,11 +323,9 @@ run_Rt <- function(data.in, out.df, dgp, inf_mean, delta=NULL,
   ame1 <- mean(data.untrt$inc[post] - data.untrt$Y.untrt.Rt.adj1[post])
   ame2 <- mean(data.untrt$inc[post] - data.untrt$Y.untrt.Rt.adj2[post])
   if (is.null(coef)) {
-    data.frame(model="Rt_exposure", effect=exp(tail(stats::coef(Rt.fit),1)), p=p,
-               AME=ame, AME.adj1=ame1, AME.adj2=ame2)
+    data.frame(model="Rt_exposure", effect=exp(tail(stats::coef(Rt.fit),1)), p=p, AME=ame, AME.adj1=ame1, AME.adj2=ame2)
   } else {
-    data.frame(model="Rt_exposure", effect=exp(coef),
-               AME=ame, AME.adj1=ame1, AME.adj2=ame2)
+    data.frame(model="Rt_exposure", effect=exp(coef), AME=ame, AME.adj1=ame1, AME.adj2=ame2)
   }
 }
 
@@ -355,8 +343,7 @@ run_beta <- function(data.in, out.df, dgp, inf_mean, delta=NULL, inf_var=NULL,
       gen p = r(p) in 1
       keep p
       keep if _n==1"
-    p <- my_RStata(src=command, data.in=data.in, data.out=TRUE,
-                   stata.echo=FALSE, id=parallel.id)$p
+    p <- my_RStata(src=command, data.in=data.in, data.out=TRUE, stata.echo=FALSE, id=parallel.id)$p
   }
   data.untrt <- data.in %>% filter(trt.unit) %>% mutate(trt_post=FALSE)
   data.untrt$beta_fit <- if (is.null(coef)) predict(beta.fit, newdata=data.untrt, type="response") else data.untrt$beta_exposure/exp(coef)
@@ -371,7 +358,7 @@ run_beta <- function(data.in, out.df, dgp, inf_mean, delta=NULL, inf_var=NULL,
   if (difference) {
     paired <- lapply(trt.IDs, function(ind) {
       pop.ind <- get_unit_population(ind, unit_population)
-      spec <- prepare_ame_simulation_window(data.deagg, ind, "beta_fit", dgp, simulate_from_trt, "beta_exposure")
+      spec <- prepare_ame_simulation_window(data.deagg, ind, "beta_fit", dgp, simulate_from_trt, "beta_exposure", state_data=out.df)
       paths <- simulate_paired_ame_trajectories(spec, dgp, pop.ind, inf_mean, delta, inf_var)
       list(
         trt=aggregate_simulated_incidence(paths$treated, incidence_aggregation=incidence_aggregation,
@@ -394,13 +381,13 @@ run_beta <- function(data.in, out.df, dgp, inf_mean, delta=NULL, inf_var=NULL,
     data.untrt$Y.untrt.beta[post] <- construct_observed_difference_counterfactual(
       data.untrt$inc[post], data.untrt$.model.trt[post], data.untrt$.model.untrt[post])
   } else {
-    specs <- lapply(trt.IDs, function(ind) prepare_ame_simulation_window(data.deagg, ind, "beta_fit", dgp, simulate_from_trt))
+    specs <- lapply(trt.IDs, function(ind) prepare_ame_simulation_window(data.deagg, ind, "beta_fit", dgp,
+                                                                       simulate_from_trt, state_data=out.df))
     beta.untrt <- rbindlist(lapply(seq_along(trt.IDs), function(k) {
       simulate_untreated_ame_trajectory(specs[[k]], dgp, get_unit_population(trt.IDs[k], unit_population), inf_mean, delta, inf_var)
     }))
     week.offset <- if (simulate_from_trt) min(data.untrt$week[data.untrt$trt.time])-1 else 0
-    beta.untrt <- aggregate_simulated_incidence(beta.untrt, trt.IDs, incidence_aggregation,
-                                                unit_population, incidence_scale, week.offset)
+    beta.untrt <- aggregate_simulated_incidence(beta.untrt, trt.IDs, incidence_aggregation, unit_population, incidence_scale, week.offset)
     data.untrt <- data.untrt %>%
       mutate(.unit_key=as.character(unit)) %>%
       left_join(beta.untrt %>% transmute(.unit_key=as.character(unit), week, Y.untrt.beta=inc), by=c(".unit_key","week")) %>%
@@ -422,24 +409,22 @@ run_beta <- function(data.in, out.df, dgp, inf_mean, delta=NULL, inf_var=NULL,
   ame1 <- mean(data.untrt$inc[post] - data.untrt$Y.untrt.beta.adj1[post])
   ame2 <- mean(data.untrt$inc[post] - data.untrt$Y.untrt.beta.adj2[post])
   if (is.null(coef)) {
-    data.frame(model="beta_exposure", effect=exp(tail(stats::coef(beta.fit),1)), p=p,
-               AME=ame, AME.adj1=ame1, AME.adj2=ame2)
+    data.frame(model="beta_exposure", effect=exp(tail(stats::coef(beta.fit),1)), p=p, AME=ame, AME.adj1=ame1, AME.adj2=ame2)
   } else {
-    data.frame(model="beta_exposure", effect=exp(coef),
-               AME=ame, AME.adj1=ame1, AME.adj2=ame2)
+    data.frame(model="beta_exposure", effect=exp(coef), AME=ame, AME.adj1=ame1, AME.adj2=ame2)
   }
 }
 
 # Calculate the true untreated incidence counterfactual
 run_true <- function(out.df, trans_prob.base1, dgp, trt.IDs=1:N1) {
   true.untrt <- rbindlist(lapply(trt.IDs, function(ind) {
-    I0 <- out.df$I[out.df$unit==ind & out.df$t==burnin+1]
-    recovered <- out.df$R[out.df$unit==ind & out.df$t==burnin+1]
+    I0 <- out.df$I[out.df$unit==ind & out.df$t==burnin]
+    recovered <- out.df$R[out.df$unit==ind & out.df$t==burnin]
     if (dgp=="SIR") {
       run_SIR_varying(pop.size=pop.size, seeds=I0, recovered=recovered, time_steps=(T0+T1), 
                       inf_mean=inf_mean, trans_prob=rep(trans_prob.base1, (T0+T1)))
     } else if (dgp=="SEIR") {
-      E0 <- out.df$E[out.df$unit==ind & out.df$t==burnin+1]
+      E0 <- out.df$E[out.df$unit==ind & out.df$t==burnin]
       run_SEIR_varying(pop.size=pop.size, I0=I0, E0=E0, recovered=recovered, time_steps=(T0+T1), 
                        inf_mean=inf_mean, delta=delta, trans_prob=rep(trans_prob.base1, (T0+T1)))
     }

@@ -13,8 +13,7 @@ county.trt <- sort(unique(df$ncounty[df$did21==1])) # list of treated county IDs
 df.model <- df %>% filter(date >= "2020-03-13") %>% # to make sure the treatment (July 24) falls on the start of a week not the middle of a week
   merge(covidestim, by.x = c("ncofips", "date"), by.y = c("fips", "date"), all.x = T) %>%
   group_by(ncounty) %>% arrange(date) %>%
-  mutate(time = 1:n(), growth = infections / lag(infections, 7),
-         E_lag = lag(infections, 1),
+  mutate(time = 1:n(), E_lag = lag(infections, 1),
          sus_frac = (coestpop2019 - cum.incidence) / coestpop2019)
 ################################################################################################################################
 inf_days <- 5; inf_days_std <- 2; delta <- 3 # Cori et al. instantaneous Rt
@@ -31,26 +30,24 @@ df.clean <- df.model %>%
   group_by(ncounty) %>%  arrange(date) %>%
   mutate(week = ceiling(time / 7),
          stnnewcases7davg = ifelse(stnnewcases7davg<0, 0, stnnewcases7davg),
+         stnnewcases7davg_lag = lag(stnnewcases7davg, 1),
          prevalence_lag = lag(prevalence, 1),
          I_est_lag = lag(I_est, 1),
          ncounty = as.numeric(haven::as_factor(ncounty))) %>%
   group_by(ncounty, week) %>%
-  summarise(
-    start_date = min(date), dayssincefirstcase = min(dayssincefirstcase),
-    sus_frac = mean(sus_frac), coestpop2019 = mean(coestpop2019),
-    stnnewcases7davg = mean(stnnewcases7davg), growth = mean(growth),
-    Rt = mean(Rt),
-    Rt_exposure = sum(infections) / sum(I_est_lag),
-    infections = mean(infections), 
-    E_lag = mean(E_lag),
-    infected_est = mean(infected_est, na.rm = T),
-    prevalence_lag = mean(prevalence_lag, na.rm = T)
-  ) %>%
+  summarise(start_date = min(date), dayssincefirstcase = min(dayssincefirstcase),
+            growth = ifelse(sum(stnnewcases7davg_lag)==0, NA, sum(stnnewcases7davg) / sum(stnnewcases7davg_lag)),
+            Rt = mean(Rt), Rt_exposure = sum(infections) / sum(I_est_lag),
+            sus_frac = mean(sus_frac), coestpop2019 = mean(coestpop2019),
+            stnnewcases7davg = mean(stnnewcases7davg),
+            infections = mean(infections), E_lag = mean(E_lag),
+            infected_est = mean(infected_est, na.rm = T),
+            prevalence_lag = mean(prevalence_lag, na.rm = T)) %>%
   dplyr::select(ncounty, week, start_date, dayssincefirstcase, coestpop2019, sus_frac, stnnewcases7davg, 
                 infections, growth, infected_est, prevalence_lag, E_lag, Rt, Rt_exposure) %>%
   ungroup() %>%
-  mutate(beta_exposure = Rt_exposure / sus_frac, # instantaneous Rt on the exposure
-         beta = Rt / sus_frac, # Rt cohort
+  mutate(beta_exposure = Rt_exposure / sus_frac,
+         beta = Rt / sus_frac, # COVIDEstim
          trt.time = (start_date >= "2020-07-24"),
          trt.unit = (ncounty %in% county.trt),
          trt_post = (trt.time & trt.unit),

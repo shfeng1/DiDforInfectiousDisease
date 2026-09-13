@@ -6,11 +6,11 @@ source("./1a_Scripts/0_Run_Estimators.R", local=TRUE)
 df.in <- readRDS("./0_Data/Kansas_Cleaned.rds")
 county.trt <- sort(unique(df.in$ncounty[df.in$trt_post]))
 growth.fit <- glm(growth ~ -1 + factor(week) + factor(ncounty) + factor(trt_post), data=df.in, family=poisson())
-growth.coef <- tail(growth.fit$coefficients, 1) # -0.08332984
+growth.coef <- tail(growth.fit$coefficients, 1) # -0.03502218
 ####################################################################################################################################
 # Get confidence interval
-growth.p <- data.frame(b0=as.numeric(growth.coef), p=0.1073)
-for (b0 in c(seq(-0.1815, -0.1814, 0.00001), seq(0.0199, 0.0200, 0.00001))) {
+growth.p <- data.frame(b0=as.numeric(growth.coef), p=0.1288)
+for (b0 in c(seq(-0.0830, -0.0829, 0.00001), seq(0.0104, 0.0105, 0.00001))) {
   tmp.p <- stata(paste0("glm growth trt_post i.ncounty i.week, family(poisson) link(log)
     boottest trt_post=", b0, ", cluster(ncounty)  reps(10000)
     gen p=r(p) in 1
@@ -20,18 +20,13 @@ for (b0 in c(seq(-0.1815, -0.1814, 0.00001), seq(0.0199, 0.0200, 0.00001))) {
 }
 lower.bound <- min(growth.p$b0[growth.p$p >= 0.05 & growth.p$b0<growth.coef])
 upper.bound <- max(growth.p$b0[growth.p$p >= 0.05 & growth.p$b0>growth.coef])
-growth_effect_20 <- c(
-  estimate=as.numeric(exp(growth.coef)),
-  lower=exp(lower.bound),
-  upper=exp(upper.bound)
-)
-growth_p_20 <- growth.p$p[1]
+growth_effect_20 <- c(estimate=as.numeric(exp(growth.coef)),
+                      lower=exp(lower.bound), upper=exp(upper.bound))
 ####################################################################################################################################
 ## CONVERT TO AME
-data.model <- df.in %>% mutate(unit = ncounty, inc = infections, S_frac = sus_frac, week = week - min(df.in$week)+1)
+data.model <- df.in %>% mutate(unit=ncounty, inc=stnnewcases7davg, S_frac=sus_frac, week=week-min(df.in$week)+1)
 T0 <- length(unique(data.model$start_date[! data.model$trt.time]))
 T1 <- length(unique(data.model$start_date[data.model$trt.time])); burnin <- 0; agg <- 1
-
 Y.obs <- mean(data.model$inc[data.model$trt_post==1])
 growth.AME <- data.frame(type = c("point estimate", "lower bound", "upper bound"),
                          coef = c(tail(growth.fit$coefficients, 1), lower.bound, upper.bound),

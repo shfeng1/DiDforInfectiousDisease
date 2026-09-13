@@ -23,7 +23,6 @@ FigureA1 <- ggplot(data_in, aes(x=week, y=PosPer1K, group=OrgName, col=col)) +
         legend.key.size = unit(2, "line"),
         panel.grid = element_blank()) +
   guides(colour = guide_legend(override.aes = list(linewidth=0.7)))
-FigureA1
 ######################################################################################################
 # Figure A2
 df.inc <- readRDS("./0_Data/School_Cleaned.rds") %>% filter(week <= 40) %>%
@@ -41,9 +40,8 @@ FigureA2 <- ggdid(inc.fit.agg) +
   geom_hline(yintercept=0, color="darkgray", linetype="dashed") +
   geom_vline(xintercept=0, color="darkgray", linetype="dashed") +
   scale_x_continuous(breaks = seq(-12, 6, 2)) +
-  scale_y_continuous(limits = c(-20, 30), breaks = seq(-20, 30, 10)) +
+  scale_y_continuous(limits = c(-21, 30), breaks = seq(-20, 30, 10)) +
   theme_bw() + xlab("Time to treatment") + ylab("Estimated treatment effect") +
   ggtitle("Incidence model: replication of original analysis") +
   theme(plot.title=element_text(size=16, face="bold", hjust=0.5),
         legend.position="none", panel.grid = element_blank())
-FigureA2

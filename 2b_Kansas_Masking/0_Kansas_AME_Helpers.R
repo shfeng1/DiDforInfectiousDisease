@@ -1,5 +1,4 @@
 # Reconstruct Kansas SEIR states on the observed incidence scale.
-
 kansas_unit_id <- function(x) {
   if (is.factor(x)) return(as.character(x))
   if (inherits(x, "haven_labelled")) x <- unclass(x)
