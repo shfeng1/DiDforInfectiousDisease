@@ -25,7 +25,7 @@ bias.AME.mean <- p_out %>% # keep variance at true value, vary mean
   group_by(model, eff.multi, mean_spe) %>%
   summarise(Y.untrt.fit = mean(Y.trt-AME),
             Y.trt = mean(Y.trt), Y.untrt.true = mean(Y.untrt.true)) %>%
-  mutate(bias.fit = Y.untrt.fit - Y.untrt.true,
+  mutate(bias.fit = Y.untrt.true - Y.untrt.fit,
          bias.fit.pct = bias.fit / Y.untrt.true)
 
 bias.AME.var <- p_out %>% # keep mean at true value, vary variance
@@ -33,7 +33,7 @@ bias.AME.var <- p_out %>% # keep mean at true value, vary variance
   group_by(model, eff.multi, var_spe) %>%
   summarise(Y.untrt.fit = mean(Y.trt-AME),
             Y.trt = mean(Y.trt), Y.untrt.true = mean(Y.untrt.true)) %>%
-  mutate(bias.fit = Y.untrt.fit - Y.untrt.true,
+  mutate(bias.fit = Y.untrt.true - Y.untrt.fit,
          bias.fit.pct = bias.fit / Y.untrt.true)
 ##############################################################################################################################
 bias.original.mean <- p_out %>% 
