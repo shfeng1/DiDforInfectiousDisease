@@ -10,9 +10,8 @@ Install the R dependencies with:
 
 ```r
 install.packages(c(
-  "tidyverse", "data.table", "readxl", "doMC", "RColorBrewer",
-  "sandwich", "fixest", "lmtest", "did", "haven", "RStata",
-  "ggpubr", "kableExtra", "here", "vroom", "foreign"
+  "tidyverse", "data.table", "readxl", "doMC", "RColorBrewer", "sandwich", "fixest", "lmtest", 
+  "did", "haven", "RStata", "ggpubr", "kableExtra", "here", "vroom", "foreign"
 ))
 ```
 
@@ -20,18 +19,28 @@ In [`global_options.R`](global_options.R), set `RStata.StataPath` and `RStata.St
 
 ## Reproduce everything
 
-`0_Master_script.R` is the single entry point for the complete workflow. It runs the simulation, summary, empirical, and appendix scripts needed to recreate every manuscript table and figure; writes generated figures and simulation files to `4_Output/`; and prints the tables and empirical estimates.
+`0_Master_script.R` is the single entry point for the complete workflow. By default, it reproduces the tables and figures using the supplied simulation results in `4_Output/`, runs the empirical analyses and the Figure 1 simulations, saves generated figures to `4_Output/`, and prints the tables and empirical estimates. The code block for regenerating the stored simulation results is commented out by default.
 
 1. Clone or download the repository and open `Parallel_Trends_Replication.Rproj` (or start R with the repository root as the working directory).
 2. Configure Stata and the worker count in `global_options.R`.
-3. For a clean simulation run, start from the existing `.rds` files in `4_Output/` folder. Running the commented out simulation scripts called in `0_Master_script.R` would allow the user to reproduce the exact simulation results; however, please be mindful of extensive computing time (>8 hours).
+3. To reproduce the tables and figures using the supplied simulation results, keep the existing `.rds` files in `4_Output/`. To regenerate all simulations from scratch, first archive the current `.rds` output files under `4_Output` folder by moving them to a different folder, then uncomment the code block under `0_Master_script.R` to enable the simulation regeneration scripts. However, please be mindful of the extensive computing time (>8 hours).
 4. Start a clean R session and run:
 
 ```r
 source("0_Master_script.R")
 ```
 
-A full regeneration is long-running (more than eight hours; hardware and Stata I/O materially affect runtime).
+## Manuscript outputs and scripts
+
+The table below maps manuscript outputs to the scripts called by `0_Master_script.R`. Simulation summary scripts use the stored results in `4_Output/`; the master script saves the figures.
+
+| Output | Script |
+| --- | --- |
+| Figure 1 | [`1b_Summarize/1_Simulate_comparison_of_models.R`](1b_Summarize/1_Simulate_comparison_of_models.R) |
+| Figure 2, Table 2 | [`1b_Summarize/2a_SIR_summ.R`](1b_Summarize/2a_SIR_summ.R) (Figure 2 and Table 2)<br>[`1b_Summarize/2b_SEIR_summ.R`](1b_Summarize/2b_SEIR_summ.R) (Table 2)<br>[`1b_Summarize/3a_Misspecify_GI_summ.R`](1b_Summarize/3a_Misspecify_GI_summ.R) (Table 2)<br>[`1b_Summarize/3b_Misspecify_SEIR_to_SIR_summ.R`](1b_Summarize/3b_Misspecify_SEIR_to_SIR_summ.R) (Table 2) |
+| Table 3 (Massachusetts) | [`2a_School_Masking/3a_School_Table.R`](2a_School_Masking/3a_School_Table.R) |
+| Table 3 (Kansas) | [`2b_Kansas_Masking/6a_Kansas_Table.R`](2b_Kansas_Masking/6a_Kansas_Table.R) |
+| Appendix tables and figures | [`2a_School_Masking/3b_School_Graph.R`](2a_School_Masking/3b_School_Graph.R) (Figures A1 and A2)<br>[`2b_Kansas_Masking/6b_Kansas_Graph.R`](2b_Kansas_Masking/6b_Kansas_Graph.R) (Figure A3)<br>[`2a_School_Masking/4_School_Callaway_SantAnna.R`](2a_School_Masking/4_School_Callaway_SantAnna.R) (Table A2)<br>[`1b_Summarize/4_SIR_long_time_summ.R`](1b_Summarize/4_SIR_long_time_summ.R) (Table A3)<br>[`1b_Summarize/5_Small_N1_summ.R`](1b_Summarize/5_Small_N1_summ.R) (Table A4) |
 
 ## Data and repository layout
 
